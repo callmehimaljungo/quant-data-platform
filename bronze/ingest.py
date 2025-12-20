@@ -54,17 +54,17 @@ logger = logging.getLogger(__name__)
 # CONSTANTS (Section 3.1 - Price Data Schema)
 # =============================================================================
 EXPECTED_SCHEMA = {
-    'Date': 'datetime64[ns]',      # Note: Kaggle uses 'Date' not 'date'
-    'Ticker': 'object',             # Note: Kaggle uses 'Ticker' not 'ticker'
-    'Open': 'float64',
-    'High': 'float64',
-    'Low': 'float64',
-    'Close': 'float64',
-    'Volume': 'int64'
+    'date': 'datetime64[ns]',
+    'ticker': 'object',
+    'open': 'float64',
+    'high': 'float64',
+    'low': 'float64',
+    'close': 'float64',
+    'volume': 'int64'
 }
 
-REQUIRED_COLUMNS = ['Date', 'Ticker', 'Open', 'High', 'Low', 'Close', 'Volume']
-CRITICAL_COLUMNS = ['Date', 'Ticker', 'Close']  # Cannot have nulls
+REQUIRED_COLUMNS = ['date', 'ticker', 'open', 'high', 'low', 'close', 'volume']
+CRITICAL_COLUMNS = ['date', 'ticker', 'close']  # Cannot have nulls
 
 OUTPUT_PATH = './data/bronze/prices.parquet'
 KAGGLE_DATASET = 'hmingjungo/stock-price'
