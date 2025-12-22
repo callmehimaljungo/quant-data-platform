@@ -18,6 +18,23 @@ from .lakehouse_helper import (
     DELTA_AVAILABLE
 )
 
+# Schema Registry
+from .schema_registry import (
+    SCHEMAS,
+    validate_schema,
+    get_schema_info,
+    list_schemas,
+    print_schema
+)
+
+# Ticker Universe
+from .ticker_universe import (
+    TickerUniverse,
+    get_universe,
+    register_tickers_from_bronze,
+    get_analyzed_tickers
+)
+
 __all__ = [
     # Lakehouse functions
     'pandas_to_lakehouse',
@@ -33,5 +50,17 @@ __all__ = [
     'delta_to_pandas',
     'is_delta_table',
     'convert_parquet_to_delta',
-    'DELTA_AVAILABLE'
+    'DELTA_AVAILABLE',
+    # Schema Registry
+    'SCHEMAS',
+    'validate_schema',
+    'get_schema_info',
+    'list_schemas',
+    'print_schema',
+    # Ticker Universe
+    'TickerUniverse',
+    'get_universe',
+    'register_tickers_from_bronze',
+    'get_analyzed_tickers'
 ]
+
