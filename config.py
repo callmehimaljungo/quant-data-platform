@@ -67,21 +67,31 @@ METADATA_SCHEMA = {
 }
 
 # =============================================================================
-# GICS SECTORS (Section 3.3)
+# GICS SECTORS (Section 3.3) - Official GICS Standard Names
 # =============================================================================
 GICS_SECTORS = [
-    'Technology',              # AAPL, MSFT, NVDA
-    'Healthcare',              # JNJ, PFE, UNH
-    'Finance',                 # JPM, BAC, GS
-    'Consumer Cyclical',       # AMZN, TSLA, HD
-    'Communication Services',  # GOOGL, META, NFLX
-    'Industrials',             # BA, CAT, UPS
-    'Consumer Defensive',      # PG, KO, WMT
-    'Energy',                  # XOM, CVX, COP
-    'Utilities',               # NEE, DUK, SO
-    'Real Estate',             # AMT, PLD, CCI
-    'Basic Materials'          # LIN, APD, ECL
+    'Information Technology',   # AAPL, MSFT, NVDA (or 'Technology' for compatibility)
+    'Health Care',              # JNJ, PFE, UNH
+    'Financials',               # JPM, BAC, GS (NOT 'Finance')
+    'Consumer Discretionary',   # AMZN, TSLA, HD (NOT 'Consumer Cyclical')
+    'Communication Services',   # GOOGL, META, NFLX
+    'Industrials',              # BA, CAT, UPS
+    'Consumer Staples',         # PG, KO, WMT (NOT 'Consumer Defensive')
+    'Energy',                   # XOM, CVX, COP
+    'Utilities',                # NEE, DUK, SO
+    'Real Estate',              # AMT, PLD, CCI
+    'Materials'                 # LIN, APD, ECL (NOT 'Basic Materials')
 ]
+
+# Alternative sector names (for data source compatibility)
+SECTOR_ALIASES = {
+    'Technology': 'Information Technology',
+    'Healthcare': 'Health Care',
+    'Finance': 'Financials',
+    'Consumer Cyclical': 'Consumer Discretionary',
+    'Consumer Defensive': 'Consumer Staples',
+    'Basic Materials': 'Materials',
+}
 
 # Market cap categories
 MARKET_CAP_THRESHOLDS = {

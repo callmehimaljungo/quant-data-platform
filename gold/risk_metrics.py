@@ -170,7 +170,12 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
         
         def calc_beta_alpha(group):
             returns = group.set_index('date')['daily_return_decimal']
-            aligned = pd.concat([returns, spy_returns], axis=1).dropna()
+            
+            # FIX: Prevent look-ahead bias - only use SPY data <= max date of stock
+            max_stock_date = returns.index.max()
+            spy_filtered = spy_returns[spy_returns.index <= max_stock_date]
+            
+            aligned = pd.concat([returns, spy_filtered], axis=1).dropna()
             
             if len(aligned) < 60:
                 return pd.Series({'beta': np.nan, 'alpha': np.nan})
