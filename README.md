@@ -226,12 +226,41 @@ MemoryError: Unable to allocate array
 
 After successful Bronze layer ingestion:
 
+## 🔄 Next Steps
+
+After successful Bronze layer ingestion:
+
 1. ✅ Bronze Layer Complete
-2. ➡️ **Next:** Silver Layer (data cleaning + enrichment)
+2. ➡️ **Silver Layer:** Data cleaning and enrichment
 
    ```bash
    python silver/clean.py
    ```
+
+3. ➡️ **Gold Layer:** Strategy calculations
+
+   ```bash
+   python gold/run_all_strategies.py
+   ```
+
+4. ➡️ **Dashboard:** Interactive visualization
+
+   ```bash
+   streamlit run dashboard/app.py
+   ```
+
+## 🧪 Running Tests
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=bronze --cov=silver --cov=gold
+
+# Run specific test file
+pytest tests/test_risk_metrics.py -v
+```
 
 ## 📝 Notes
 
@@ -245,147 +274,6 @@ After successful Bronze layer ingestion:
 Nếu gặp issues:
 
 1. Check logs trong console output
-2. Verify R2 credentials
+2. Verify R2/Kaggle credentials
 3. Validate data schema
 4. Review Section 7.3 (Error Handling) trong context document
-
-# bronze/ingest.py - Updated Ingestion Script
-
-## Changes
-
-- Added detailed logging
-- Included data validation steps
-- Enhanced error handling
-- Cleaned up temporary files after ingestion
-
-## Usage
-
-Run the script as part of the Bronze layer ingestion process.
-
-```python
-import os
-import pandas as pd
-import pyarrow.parquet as pq
-from datetime import datetime
-from config import R2_BUCKET, R2_ENDPOINT, R2_ACCESS_KEY, R2_SECRET_KEY
-import logging
-import tempfile
-import shutil
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('bronze.ingest')
-
-def ingest():
-    logger.info("="*70)
-    logger.info("BRONZE LAYER INGESTION STARTED")
-    logger.info("="*70)
-
-    # Step 1: Connect to R2 storage
-    try:
-        import boto3
-        from botocore.exceptions import NoCredentialsError, PartialCredentialsError
-
-        session = boto3.session.Session()
-        client = session.client(
-            's3',
-            region_name='auto',
-            endpoint_url=R2_ENDPOINT,
-            aws_access_key_id=R2_ACCESS_KEY,
-            aws_secret_access_key=R2_SECRET_KEY
-        )
-        logger.info("✓ Successfully connected to R2 storage")
-    except (NoCredentialsError, PartialCredentialsError) as e:
-        logger.error("✗ R2 credentials not found or incomplete")
-        logger.exception(e)
-        return
-    except Exception as e:
-        logger.error("✗ Failed to connect to R2")
-        logger.exception(e)
-        return
-
-    # Step 2: List and process all parquet files in the raw/prices/ directory
-    try:
-        objects = client.list_objects_v2(Bucket=R2_BUCKET, Prefix='raw/prices/')
-        files = [obj['Key'] for obj in objects.get('Contents', []) if obj['Key'].endswith('.parquet')]
-
-        logger.info(f"✓ Found {len(files)} parquet files to process")
-    except Exception as e:
-        logger.error("✗ Failed to list files in R2 bucket")
-        logger.exception(e)
-        return
-
-    all_data = []
-    for file in files:
-        # Download file
-        try:
-            logger.info(f"Processing file: {file}")
-
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                # Download file to temp directory
-                tmp_file = os.path.join(tmpdirname, os.path.basename(file))
-                client.download_file(R2_BUCKET, file, tmp_file)
-                logger.info(f"✓ Downloaded {file} to {tmp_file}")
-
-                # Read parquet file
-                df = pd.read_parquet(tmp_file)
-                logger.info(f"✓ Read {len(df)} rows from {tmp_file}")
-
-                # Validate schema
-                required_columns = {'date', 'ticker', 'open', 'high', 'low', 'close', 'volume'}
-                if not required_columns.issubset(df.columns):
-                    logger.error(f"✗ Schema validation FAILED: Missing columns {required_columns - set(df.columns)}")
-                    continue
-
-                # Check for nulls in critical columns
-                null_checks = df[['date', 'ticker', 'close']].isnull().sum()
-                if null_checks.any():
-                    logger.warning(f"⚠️ Null values found in critical columns: {null_checks[null_checks > 0]}")
-
-                # Add metadata column
-                df['ingested_at'] = datetime.now()
-                logger.info("✓ Added metadata column: ingested_at")
-
-                # Append to all data
-                all_data.append(df)
-        except Exception as e:
-            logger.error(f"✗ Error processing file {file}")
-            logger.exception(e)
-            continue
-
-    # Combine all data into single DataFrame
-    if all_data:
-        try:
-            combined_df = pd.concat(all_data, ignore_index=True)
-            logger.info(f"✓ Combined data from {len(files)} files: {len(combined_df)} rows")
-
-            # Save to final destination
-            output_file = './data/bronze/prices.parquet'
-            combined_df.to_parquet(output_file, index=False)
-            logger.info(f"✓ Data saved to {output_file}")
-
-            # Log data statistics
-            logger.info(f"Total rows loaded: {len(combined_df)}")
-            logger.info(f"Total unique tickers: {combined_df['ticker'].nunique()}")
-            logger.info(f"✓ Date range: {df['Date'].min()} to {df['Date'].max()}")
-            
-            # Step 4: Standardize column names to lowercase
-            df.columns = df.columns.str.lower()
-            logger.info(f"✓ Standardized column names: {df.columns.tolist()}")
-            
-            # Clean up temp files
-            shutil.rmtree(tmpdirname)
-            logger.info(f"✓ Cleaned up temporary files")
-        except Exception as e:
-            logger.error("✗ Failed to combine or save data")
-            logger.exception(e)
-    else:
-        logger.warning("No data to process")
-
-    logger.info("="*70)
-    logger.info("BRONZE LAYER INGESTION COMPLETED")
-    logger.info("="*70)
-
-if __name__ == "__main__":
-    ingest()
-```
