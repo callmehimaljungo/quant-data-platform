@@ -338,6 +338,66 @@ def add_enrichment_metadata(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_quality_flags(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add quality flag columns instead of deleting data
+    
+    Flags (boolean columns):
+    - is_penny_stock: close < $1 (high noise, potential delisting)
+    - has_outlier_return: |daily_return| > 50% (potential stock split or error)
+    - low_liquidity: volume < 10,000 (hard to trade)
+    - insufficient_history: ticker has < 252 trading days (< 1 year)
+    
+    Usage:
+        # Get high-quality subset
+        df_quality = df[~df['is_penny_stock'] & ~df['low_liquidity']]
+        
+    NOTE: Rows are NOT deleted - use flags to filter as needed
+    
+    Args:
+        df: DataFrame with price data
+        
+    Returns:
+        DataFrame with quality flag columns added
+    """
+    logger.info("Adding quality flags (preserving all data)...")
+    
+    # Flag 1: Penny stocks (close < $1)
+    df['is_penny_stock'] = df['close'] < 1.0
+    penny_count = df['is_penny_stock'].sum()
+    logger.info(f"  is_penny_stock: {penny_count:,} rows ({penny_count/len(df)*100:.2f}%)")
+    
+    # Flag 2: Outlier returns (|return| > 50%)
+    # These are often stock splits, reverse splits, or data errors
+    df['has_outlier_return'] = df['daily_return'].abs() > 50
+    outlier_count = df['has_outlier_return'].sum()
+    logger.info(f"  has_outlier_return: {outlier_count:,} rows ({outlier_count/len(df)*100:.2f}%)")
+    
+    # Flag 3: Low liquidity (volume < 10,000)
+    df['low_liquidity'] = df['volume'] < 10000
+    low_liq_count = df['low_liquidity'].sum()
+    logger.info(f"  low_liquidity: {low_liq_count:,} rows ({low_liq_count/len(df)*100:.2f}%)")
+    
+    # Flag 4: Insufficient history per ticker (< 252 trading days)
+    ticker_counts = df.groupby('ticker').size()
+    insufficient_tickers = ticker_counts[ticker_counts < 252].index
+    df['insufficient_history'] = df['ticker'].isin(insufficient_tickers)
+    insuff_count = df['insufficient_history'].sum()
+    logger.info(f"  insufficient_history: {insuff_count:,} rows ({len(insufficient_tickers)} tickers < 1 year)")
+    
+    # Summary: Count of "high quality" rows (no flags)
+    high_quality_mask = (
+        ~df['is_penny_stock'] & 
+        ~df['has_outlier_return'] & 
+        ~df['low_liquidity'] & 
+        ~df['insufficient_history']
+    )
+    high_quality_count = high_quality_mask.sum()
+    logger.info(f"  ✓ High-quality rows (no flags): {high_quality_count:,} ({high_quality_count/len(df)*100:.1f}%)")
+    
+    return df
+
+
 # =============================================================================
 # MAIN CLEANING FUNCTION
 # =============================================================================
@@ -390,6 +450,10 @@ def clean_silver_data() -> pd.DataFrame:
         
         # Step 9: Add metadata
         df = add_enrichment_metadata(df)
+        
+        # Step 10: Add quality flags (instead of deleting data)
+        # Adds columns: is_penny_stock, has_outlier_return, low_liquidity, insufficient_history
+        df = add_quality_flags(df)
         
         duration = (datetime.now() - start_time).total_seconds()
         

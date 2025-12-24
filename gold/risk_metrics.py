@@ -205,7 +205,7 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
     
     # Beta and Alpha (if SPY available)
     if has_spy:
-        logger.info("  Calculating Beta & Alpha...")
+        logger.info("  Calculating Beta & Alpha (static + rolling 252-day)...")
         
         def calc_beta_alpha(group):
             returns = group.set_index('date')['daily_return_decimal']
@@ -217,27 +217,59 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
             aligned = pd.concat([returns, spy_filtered], axis=1).dropna()
             
             if len(aligned) < 60:
-                return pd.Series({'beta': np.nan, 'alpha': np.nan})
+                return pd.Series({
+                    'beta_static': np.nan, 
+                    'beta_rolling_252': np.nan,
+                    'alpha': np.nan
+                })
             
             stock = aligned.iloc[:, 0]
             market = aligned.iloc[:, 1]
             
+            # STATIC BETA: Full history
             cov = stock.cov(market)
             var = market.var()
             
             if var == 0:
-                return pd.Series({'beta': np.nan, 'alpha': np.nan})
+                return pd.Series({
+                    'beta_static': np.nan, 
+                    'beta_rolling_252': np.nan,
+                    'alpha': np.nan
+                })
             
-            beta = cov / var
+            beta_static = cov / var
+            
+            # ROLLING BETA: Last 252 trading days (1 year)
+            # More relevant for current market conditions
+            if len(aligned) >= 252:
+                stock_recent = stock.tail(252)
+                market_recent = market.tail(252)
+                cov_rolling = stock_recent.cov(market_recent)
+                var_rolling = market_recent.var()
+                beta_rolling = cov_rolling / var_rolling if var_rolling > 0 else np.nan
+            else:
+                # Not enough data for rolling, use static
+                beta_rolling = beta_static
+            
+            # Alpha calculation using static beta
             daily_rf = RISK_FREE_RATE / TRADING_DAYS
-            expected = daily_rf + beta * (market.mean() - daily_rf)
+            expected = daily_rf + beta_static * (market.mean() - daily_rf)
             alpha = (stock.mean() - expected) * TRADING_DAYS
             
-            return pd.Series({'beta': beta, 'alpha': alpha})
+            return pd.Series({
+                'beta_static': beta_static,
+                'beta_rolling_252': beta_rolling,
+                'alpha': alpha
+            })
         
         beta_alpha = grouped.apply(calc_beta_alpha).reset_index()
         basic = basic.merge(beta_alpha, on='ticker', how='left')
+        
+        # Create 'beta' as alias for rolling (recommended for portfolio use)
+        basic['beta'] = basic['beta_rolling_252']
     else:
+        basic['beta_static'] = np.nan
+        basic['beta_rolling_252'] = np.nan
         basic['beta'] = np.nan
         basic['alpha'] = np.nan
     

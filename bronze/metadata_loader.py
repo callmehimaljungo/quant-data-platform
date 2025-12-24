@@ -56,8 +56,70 @@ except ImportError:
 
 OUTPUT_DIR = BRONZE_DIR / 'stock_metadata_lakehouse'
 RAW_JSON_DIR = BRONZE_DIR / 'stock_metadata_raw'
+CHECKPOINT_FILE = BRONZE_DIR / 'metadata_checkpoint.json'
 BATCH_SIZE = 50  # tickers per batch (yfinance rate limit friendly)
 SLEEP_BETWEEN_BATCHES = 2  # seconds
+
+
+# =============================================================================
+# CHECKPOINT FUNCTIONS (Resume capability)
+# =============================================================================
+
+def load_checkpoint() -> Dict[str, Any]:
+    """
+    Load checkpoint file to resume from previous progress
+    
+    Returns:
+        Dictionary with 'fetched_tickers' list and 'results' list
+    """
+    if CHECKPOINT_FILE.exists():
+        try:
+            with open(CHECKPOINT_FILE, 'r') as f:
+                checkpoint = json.load(f)
+            logger.info(f"✓ Loaded checkpoint: {len(checkpoint.get('fetched_tickers', []))} tickers already fetched")
+            return checkpoint
+        except Exception as e:
+            logger.warning(f"Failed to load checkpoint: {e}")
+    
+    return {'fetched_tickers': [], 'results': []}
+
+
+def save_checkpoint(fetched_tickers: List[str], results: List[Dict]) -> None:
+    """
+    Save checkpoint with atomic write to prevent corruption
+    
+    Args:
+        fetched_tickers: List of already fetched ticker symbols
+        results: List of fetched metadata dictionaries
+    """
+    checkpoint = {
+        'fetched_tickers': fetched_tickers,
+        'results': results,
+        'last_updated': datetime.now().isoformat()
+    }
+    
+    # Atomic write: write to temp file, then rename
+    temp_file = CHECKPOINT_FILE.with_suffix('.tmp')
+    try:
+        with open(temp_file, 'w') as f:
+            json.dump(checkpoint, f, default=str)
+        
+        # Atomic rename (works on Windows too)
+        if CHECKPOINT_FILE.exists():
+            CHECKPOINT_FILE.unlink()
+        temp_file.rename(CHECKPOINT_FILE)
+        
+    except Exception as e:
+        logger.error(f"Failed to save checkpoint: {e}")
+        if temp_file.exists():
+            temp_file.unlink()
+
+
+def clear_checkpoint() -> None:
+    """Clear checkpoint file after successful completion"""
+    if CHECKPOINT_FILE.exists():
+        CHECKPOINT_FILE.unlink()
+        logger.info("✓ Checkpoint file cleared")
 
 
 # =============================================================================
@@ -184,29 +246,46 @@ def load_stock_metadata(
         tickers = tickers[:max_tickers]
         logger.info(f"Limited to {max_tickers} tickers for testing")
     
+    # Load checkpoint for resume capability
+    checkpoint = load_checkpoint()
+    already_fetched = set(checkpoint.get('fetched_tickers', []))
+    all_results = checkpoint.get('results', [])
+    
+    # Filter out already fetched tickers
+    remaining_tickers = [t for t in tickers if t not in already_fetched]
+    
+    if already_fetched:
+        logger.info(f"Resuming from checkpoint: {len(already_fetched)} already fetched, {len(remaining_tickers)} remaining")
+    
     # Process in batches
-    all_results = []
-    total_batches = (len(tickers) + BATCH_SIZE - 1) // BATCH_SIZE
+    total_batches = (len(remaining_tickers) + BATCH_SIZE - 1) // BATCH_SIZE
     
-    logger.info(f"Processing {len(tickers):,} tickers in {total_batches} batches")
+    logger.info(f"Processing {len(remaining_tickers):,} tickers in {total_batches} batches")
     
-    for i in range(0, len(tickers), BATCH_SIZE):
+    fetched_tickers = list(already_fetched)
+    
+    for i in range(0, len(remaining_tickers), BATCH_SIZE):
         batch_num = i // BATCH_SIZE + 1
-        batch_tickers = tickers[i:i + BATCH_SIZE]
+        batch_tickers = remaining_tickers[i:i + BATCH_SIZE]
         
         logger.info(f"Batch {batch_num}/{total_batches}: {len(batch_tickers)} tickers")
         
         batch_results = fetch_batch_info(batch_tickers)
         all_results.extend(batch_results)
+        fetched_tickers.extend(batch_tickers)
+        
+        # Save checkpoint after each batch (enable resume)
+        save_checkpoint(fetched_tickers, all_results)
         
         # Progress update
         if batch_num % 10 == 0:
-            success_rate = len(all_results) / (i + len(batch_tickers)) * 100
-            logger.info(f"Progress: {i + len(batch_tickers):,}/{len(tickers):,} "
-                       f"({success_rate:.1f}% success)")
+            total_fetched = len(already_fetched) + i + len(batch_tickers)
+            success_rate = len(all_results) / total_fetched * 100
+            logger.info(f"Progress: {total_fetched:,}/{len(tickers):,} "
+                       f"({success_rate:.1f}% success) - Checkpoint saved")
         
         # Rate limiting
-        if i + BATCH_SIZE < len(tickers):
+        if i + BATCH_SIZE < len(remaining_tickers):
             time.sleep(SLEEP_BETWEEN_BATCHES)
     
     # Convert to DataFrame
@@ -312,6 +391,9 @@ def main(max_tickers: Optional[int] = None, test: bool = False):
         
         # Save to Lakehouse
         save_to_lakehouse(df)
+        
+        # Clear checkpoint after successful completion
+        clear_checkpoint()
         
         # Register in universe
         register_in_universe(df)

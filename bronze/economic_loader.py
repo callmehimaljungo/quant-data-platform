@@ -65,6 +65,19 @@ except ImportError:
 OUTPUT_DIR = BRONZE_DIR / 'economic_lakehouse'
 RAW_CSV_DIR = BRONZE_DIR / 'economic_raw'
 
+# Publication Lag (days) - Time between reference period end and public availability
+# CRITICAL: These lags prevent look-ahead bias in backtests
+# Source: FRED release schedules
+PUBLICATION_LAGS = {
+    'GDP': 30,        # GDP released ~30 days after quarter ends
+    'CPIAUCSL': 15,   # CPI released ~15 days after month ends
+    'UNRATE': 7,      # Unemployment released first Friday of month
+    'DFF': 1,         # Fed rate effective next day
+    'DGS10': 1,       # Treasury yields available next day
+    'VIXCLS': 0,      # VIX is real-time
+    'DTWEXBGS': 1,    # Dollar index next day
+}
+
 # FRED Series definitions
 FRED_SERIES = {
     'GDP': {

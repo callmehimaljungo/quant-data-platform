@@ -197,6 +197,60 @@ def forward_fill_missing(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def apply_publication_lags(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Apply publication lags to prevent look-ahead bias in backtests
+    
+    Creates *_realtime columns that represent when data was actually available
+    
+    Example:
+    - GDP Q1 2024 is published ~30 days after March 31
+    - So GDP data from Jan-Mar 2024 only available from ~April 30
+    - gdp_realtime column will have NaN for April 1-29
+    
+    CRITICAL: Use *_realtime columns when joining with price data for backtesting!
+    """
+    logger.info("Applying publication lags (preventing look-ahead bias)...")
+    
+    # Import publication lags from bronze loader
+    try:
+        from bronze.economic_loader import PUBLICATION_LAGS
+    except ImportError:
+        # Default lags if import fails
+        PUBLICATION_LAGS = {
+            'GDP': 30, 'CPIAUCSL': 15, 'UNRATE': 7,
+            'DFF': 1, 'DGS10': 1, 'VIXCLS': 0, 'DTWEXBGS': 1
+        }
+    
+    # Map indicator_id to column names
+    indicator_to_col = {
+        'GDP': 'gdp',
+        'CPIAUCSL': 'cpi',
+        'UNRATE': 'unemployment_rate',
+        'DFF': 'fed_funds_rate',
+        'DGS10': 'treasury_10y',
+        'VIXCLS': 'vix',
+        'DTWEXBGS': 'dollar_index',
+    }
+    
+    for indicator_id, col_name in indicator_to_col.items():
+        if col_name in df.columns:
+            lag_days = PUBLICATION_LAGS.get(indicator_id, 0)
+            
+            if lag_days > 0:
+                # Create realtime column (shifted by lag)
+                realtime_col = f"{col_name}_realtime"
+                df[realtime_col] = df[col_name].shift(lag_days)
+                logger.info(f"  ✓ {col_name} → {realtime_col} (lag: {lag_days} days)")
+            else:
+                # VIX is real-time, no lag needed
+                df[f"{col_name}_realtime"] = df[col_name]
+    
+    logger.info("  ⚠️  Use *_realtime columns for backtest to avoid look-ahead bias!")
+    
+    return df
+
+
 def calculate_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate derived economic indicators
@@ -317,6 +371,10 @@ def process_economic() -> pd.DataFrame:
     
     # Step 5: Forward fill missing values
     df = forward_fill_missing(df)
+    
+    # Step 5.1: Apply publication lags (prevent look-ahead bias)
+    # Creates *_realtime columns for backtesting
+    df = apply_publication_lags(df)
     
     # Step 6: Calculate derived indicators
     df = calculate_derived_indicators(df)
