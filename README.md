@@ -1,13 +1,22 @@
-# Quant Data Platform - Bronze Layer
+# Quant Data Platform
 
 ## 📋 Overview
 
-Bronze Layer thực hiện **raw data ingestion** từ Cloudflare R2 storage, theo kiến trúc Medallion.
+A **Data Lake Platform** for quantitative stock analysis, built with Medallion Architecture (Bronze → Silver → Gold layers).
+
+> **Note:** This platform uses a simplified Data Lake pattern with Parquet files and versioning metadata.
+> It is NOT a full Data Lakehouse (which requires Delta Lake/Iceberg for ACID transactions).
+
+**Data Sources:**
+
+- **Primary:** Kaggle dataset (`hmingjungo/stock-price`)
+- **Alternative:** Cloudflare R2 storage
 
 **Nhiệm vụ chính:**
-- Load dữ liệu OHLCV của 9000+ US stocks từ R2
+
+- Load dữ liệu OHLCV của 9000+ US stocks
 - Validate schema theo Section 3.1
-- **KHÔNG transform** data (giữ nguyên raw)
+- **KHÔNG transform** data trong Bronze (giữ nguyên raw)
 - Add metadata: `ingested_at` timestamp
 - Quality checks: schema validation + null checks
 
@@ -45,6 +54,7 @@ cp .env.example .env
 ### 2. Configure R2 Credentials
 
 Edit `.env` file:
+
 ```bash
 R2_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
 R2_ACCESS_KEY=your_access_key
@@ -59,6 +69,7 @@ python config.py
 ```
 
 Expected output:
+
 ```
 ======================================================================
 CONFIGURATION VALIDATION
@@ -145,14 +156,17 @@ print(df.info())
 Bronze layer thực hiện các checks sau:
 
 ### 1. Schema Validation
+
 - ✅ All required columns present: `date`, `ticker`, `open`, `high`, `low`, `close`, `volume`
 - ✅ Correct data types (float64 for prices, int64 for volume, datetime for date)
 
 ### 2. Quality Checks
+
 - ✅ No nulls in critical columns: `date`, `ticker`, `close`
 - ⚠️  Other columns có thể có nulls (sẽ clean ở Silver layer)
 
 ### 3. Metadata
+
 - ✅ `ingested_at` timestamp added to track when data was loaded
 
 ## 🐛 Troubleshooting
@@ -214,6 +228,7 @@ After successful Bronze layer ingestion:
 
 1. ✅ Bronze Layer Complete
 2. ➡️ **Next:** Silver Layer (data cleaning + enrichment)
+
    ```bash
    python silver/clean.py
    ```
@@ -228,6 +243,7 @@ After successful Bronze layer ingestion:
 ## 👥 Support
 
 Nếu gặp issues:
+
 1. Check logs trong console output
 2. Verify R2 credentials
 3. Validate data schema
@@ -235,13 +251,15 @@ Nếu gặp issues:
 
 # bronze/ingest.py - Updated Ingestion Script
 
-## Changes:
+## Changes
+
 - Added detailed logging
 - Included data validation steps
 - Enhanced error handling
 - Cleaned up temporary files after ingestion
 
-## Usage:
+## Usage
+
 Run the script as part of the Bronze layer ingestion process.
 
 ```python

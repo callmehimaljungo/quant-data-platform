@@ -41,13 +41,52 @@ SILVER_PARQUET_PATH = SILVER_DIR / 'enriched_stocks.parquet'
 OUTPUT_TICKER_PATH = GOLD_DIR / 'risk_metrics_lakehouse'
 OUTPUT_SECTOR_PATH = GOLD_DIR / 'sector_risk_metrics_lakehouse'
 
-# Risk-free rate = 5% per year (US Treasury rate)
-RISK_FREE_RATE = 0.05
+# Default Risk-free rate = 5% per year (US Treasury rate)
+# NOTE: For more accurate results, use get_dynamic_risk_free_rate()
+DEFAULT_RISK_FREE_RATE = 0.05
+RISK_FREE_RATE = DEFAULT_RISK_FREE_RATE  # For backward compatibility
+
 # Trading days per year
 TRADING_DAYS = 252
 
 # SPY ticker (S&P 500 ETF) - benchmark for Beta calculation
 BENCHMARK_TICKER = 'SPY'
+
+# Historical Fed Funds Rate by period (approximate averages)
+# Source: Federal Reserve Economic Data (FRED)
+HISTORICAL_RISK_FREE_RATES = {
+    # (start_year, end_year): rate
+    (1960, 1970): 0.045,  # 4.5%
+    (1970, 1980): 0.075,  # 7.5%
+    (1980, 1990): 0.095,  # 9.5%
+    (1990, 2000): 0.055,  # 5.5%
+    (2000, 2008): 0.035,  # 3.5%
+    (2008, 2015): 0.002,  # 0.2% (near zero after 2008 crisis)
+    (2015, 2020): 0.015,  # 1.5%
+    (2020, 2022): 0.002,  # 0.2% (COVID era)
+    (2022, 2030): 0.05,   # 5.0% (post-COVID tightening)
+}
+
+
+def get_dynamic_risk_free_rate(year: int) -> float:
+    """
+    Get approximate risk-free rate for a given year.
+    
+    Uses historical Fed Funds rate averages by period.
+    More accurate than using a single static rate for all historical data.
+    
+    Args:
+        year: Year to lookup rate for
+        
+    Returns:
+        float: Approximate risk-free rate for that period
+    """
+    for (start, end), rate in HISTORICAL_RISK_FREE_RATES.items():
+        if start <= year < end:
+            return rate
+    
+    # Default to current rate if year not found
+    return DEFAULT_RISK_FREE_RATE
 
 
 # =============================================================================
