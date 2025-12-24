@@ -46,11 +46,17 @@ st.set_page_config(
 @st.cache_data(ttl=3600)
 def load_risk_metrics() -> pd.DataFrame:
     """Load risk metrics from Gold layer"""
-    path = GOLD_DIR / 'risk_metrics_lakehouse'
-    parquet_files = list(path.glob('*.parquet')) if path.exists() else []
+    # Try multiple possible paths
+    possible_paths = [
+        GOLD_DIR / 'ticker_metrics_lakehouse',
+        GOLD_DIR / 'risk_metrics_lakehouse',
+    ]
     
-    if parquet_files:
-        return pd.read_parquet(parquet_files[0])
+    for path in possible_paths:
+        if path.exists():
+            parquet_files = list(path.glob('*.parquet'))
+            if parquet_files:
+                return pd.read_parquet(parquet_files[0])
     
     # Fallback: create sample data
     return create_sample_risk_metrics()
@@ -59,11 +65,17 @@ def load_risk_metrics() -> pd.DataFrame:
 @st.cache_data(ttl=3600)
 def load_sector_metrics() -> pd.DataFrame:
     """Load sector-level metrics"""
-    path = GOLD_DIR / 'sector_risk_metrics_lakehouse'
-    parquet_files = list(path.glob('*.parquet')) if path.exists() else []
+    # Try multiple possible paths
+    possible_paths = [
+        GOLD_DIR / 'sector_metrics_lakehouse',
+        GOLD_DIR / 'sector_risk_metrics_lakehouse',
+    ]
     
-    if parquet_files:
-        return pd.read_parquet(parquet_files[0])
+    for path in possible_paths:
+        if path.exists():
+            parquet_files = list(path.glob('*.parquet'))
+            if parquet_files:
+                return pd.read_parquet(parquet_files[0])
     
     return create_sample_sector_metrics()
 
@@ -77,10 +89,10 @@ def create_sample_risk_metrics() -> pd.DataFrame:
         'ticker': tickers,
         'sector': np.random.choice(GICS_SECTORS, len(tickers)),
         'sharpe_ratio': np.random.uniform(0.5, 2.5, len(tickers)),
-        'volatility_pct': np.random.uniform(15, 45, len(tickers)),
-        'max_drawdown_pct': np.random.uniform(-50, -10, len(tickers)),
-        'beta': np.random.uniform(0.5, 1.5, len(tickers)),
-        'alpha': np.random.uniform(-0.1, 0.2, len(tickers)),
+        'volatility': np.random.uniform(0.15, 0.45, len(tickers)),
+        'max_drawdown': np.random.uniform(-50, -10, len(tickers)),
+        'avg_daily_return': np.random.uniform(-0.001, 0.002, len(tickers)),
+        'avg_volume': np.random.uniform(1e6, 1e8, len(tickers)),
     })
 
 
@@ -89,9 +101,9 @@ def create_sample_sector_metrics() -> pd.DataFrame:
     return pd.DataFrame({
         'sector': GICS_SECTORS,
         'num_tickers': np.random.randint(50, 500, len(GICS_SECTORS)),
-        'avg_sharpe': np.random.uniform(0.8, 1.8, len(GICS_SECTORS)),
-        'avg_volatility_pct': np.random.uniform(18, 35, len(GICS_SECTORS)),
-        'avg_max_drawdown_pct': np.random.uniform(-40, -15, len(GICS_SECTORS)),
+        'sharpe_ratio': np.random.uniform(0.8, 1.8, len(GICS_SECTORS)),
+        'volatility': np.random.uniform(0.18, 0.35, len(GICS_SECTORS)),
+        'max_drawdown': np.random.uniform(-40, -15, len(GICS_SECTORS)),
     })
 
 
@@ -111,12 +123,12 @@ def render_sidebar():
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Data Status")
     
-    # Check data availability
-    risk_data_exists = (GOLD_DIR / 'risk_metrics_lakehouse').exists()
-    st.sidebar.markdown(f"Risk Metrics: {'✅' if risk_data_exists else '⚠️ Sample'}")
+    # Check data availability - check multiple possible paths
+    risk_data_exists = (GOLD_DIR / 'ticker_metrics_lakehouse').exists() or (GOLD_DIR / 'risk_metrics_lakehouse').exists()
+    st.sidebar.markdown(f"Risk Metrics: {'✅ Real Data' if risk_data_exists else '⚠️ Sample'}")
     
-    sector_data_exists = (GOLD_DIR / 'sector_risk_metrics_lakehouse').exists()
-    st.sidebar.markdown(f"Sector Metrics: {'✅' if sector_data_exists else '⚠️ Sample'}")
+    sector_data_exists = (GOLD_DIR / 'sector_metrics_lakehouse').exists() or (GOLD_DIR / 'sector_risk_metrics_lakehouse').exists()
+    st.sidebar.markdown(f"Sector Metrics: {'✅ Real Data' if sector_data_exists else '⚠️ Sample'}")
     
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"*Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*")
@@ -154,7 +166,7 @@ def render_overview():
         )
     
     with col3:
-        avg_vol = risk_df['volatility_pct'].mean()
+        avg_vol = risk_df['volatility'].mean() * 100  # Convert to percentage
         st.metric(
             "Avg Volatility",
             f"{avg_vol:.1f}%",
@@ -162,7 +174,7 @@ def render_overview():
         )
     
     with col4:
-        avg_mdd = risk_df['max_drawdown_pct'].mean()
+        avg_mdd = risk_df['max_drawdown'].mean()
         st.metric(
             "Avg Max Drawdown",
             f"{avg_mdd:.1f}%",
@@ -188,11 +200,11 @@ def render_overview():
     with col2:
         st.subheader("📊 Sector Performance")
         fig = px.bar(
-            sector_df.sort_values('avg_sharpe', ascending=True),
-            x='avg_sharpe',
+            sector_df.sort_values('sharpe_ratio', ascending=True),
+            x='sharpe_ratio',
             y='sector',
             orientation='h',
-            color='avg_sharpe',
+            color='sharpe_ratio',
             color_continuous_scale='RdYlGn'
         )
         fig.update_layout(height=400)
@@ -200,9 +212,9 @@ def render_overview():
     
     # Top Performers Table
     st.subheader("🏆 Top 10 by Sharpe Ratio")
-    top_10 = risk_df.nlargest(10, 'sharpe_ratio')[
-        ['ticker', 'sector', 'sharpe_ratio', 'volatility_pct', 'beta']
-    ]
+    display_cols = ['ticker', 'sector', 'sharpe_ratio', 'volatility', 'max_drawdown']
+    available_cols = [c for c in display_cols if c in risk_df.columns]
+    top_10 = risk_df.nlargest(10, 'sharpe_ratio')[available_cols]
     st.dataframe(top_10, use_container_width=True)
 
 
@@ -242,37 +254,36 @@ def render_risk_metrics():
     st.subheader("📈 Risk-Return Profile")
     fig = px.scatter(
         filtered_df,
-        x='volatility_pct',
+        x='volatility',
         y='sharpe_ratio',
         color='sector',
-        hover_data=['ticker', 'beta', 'max_drawdown_pct'],
+        hover_data=['ticker', 'max_drawdown'],
         labels={
-            'volatility_pct': 'Volatility (%)',
+            'volatility': 'Volatility',
             'sharpe_ratio': 'Sharpe Ratio'
         }
     )
     fig.update_layout(height=500)
     st.plotly_chart(fig, use_container_width=True)
     
-    # Beta Distribution
+    # Distributions
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📊 Beta Distribution")
+        st.subheader("📊 Volatility Distribution")
         fig = px.histogram(
             filtered_df,
-            x='beta',
+            x='volatility',
             nbins=30,
             color_discrete_sequence=['#2ecc71']
         )
-        fig.add_vline(x=1, line_dash="dash", line_color="red")
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         st.subheader("📊 Max Drawdown Distribution")
         fig = px.histogram(
             filtered_df,
-            x='max_drawdown_pct',
+            x='max_drawdown',
             nbins=30,
             color_discrete_sequence=['#e74c3c']
         )
@@ -299,14 +310,14 @@ def render_sector_analysis():
     # Sector comparison
     st.subheader("📊 Sector Comparison")
     
-    metrics = ['avg_sharpe', 'avg_volatility_pct', 'avg_max_drawdown_pct', 'num_tickers']
+    metrics = ['sharpe_ratio', 'volatility', 'max_drawdown', 'num_tickers']
     selected_metric = st.selectbox(
         "Select Metric",
         metrics,
         format_func=lambda x: {
-            'avg_sharpe': 'Average Sharpe Ratio',
-            'avg_volatility_pct': 'Average Volatility (%)',
-            'avg_max_drawdown_pct': 'Average Max Drawdown (%)',
+            'sharpe_ratio': 'Average Sharpe Ratio',
+            'volatility': 'Average Volatility',
+            'max_drawdown': 'Average Max Drawdown',
             'num_tickers': 'Number of Tickers'
         }.get(x, x)
     )
@@ -333,7 +344,7 @@ def render_sector_analysis():
     with col2:
         st.metric("Avg Sharpe", f"{sector_stocks['sharpe_ratio'].mean():.2f}")
     with col3:
-        st.metric("Avg Vol", f"{sector_stocks['volatility_pct'].mean():.1f}%")
+        st.metric("Avg Vol", f"{sector_stocks['volatility'].mean()*100:.1f}%")
     
     st.dataframe(
         sector_stocks.sort_values('sharpe_ratio', ascending=False).head(20),
