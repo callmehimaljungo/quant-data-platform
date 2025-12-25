@@ -185,6 +185,157 @@ def add_returns(df: pd.DataFrame, periods: List[int] = [1, 5, 10, 20]) -> pd.Dat
     return df
 
 
+def add_economic_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add macro indicators: VIX (fear), Fed rate"""
+    from config import SILVER_DIR
+    from utils.lakehouse_helper import lakehouse_to_pandas, is_lakehouse_table
+    
+    df = df.copy()
+    econ_path = SILVER_DIR / 'economic_lakehouse'
+    
+    if not is_lakehouse_table(econ_path):
+        logger.warning("Economic data not found, skipping macro features")
+        return df
+    
+    try:
+        econ_df = lakehouse_to_pandas(econ_path)
+        logger.info(f"  Loaded {len(econ_df):,} economic data rows")
+        
+        # Standardize date
+        if 'date' in econ_df.columns:
+            econ_df['date'] = pd.to_datetime(econ_df['date']).dt.date
+        
+        # Map to standard names
+        econ_cols = []
+        
+        # VIX
+        if 'vix' in econ_df.columns:
+            econ_df['VIX'] = econ_df['vix']
+            econ_cols.append('VIX')
+        elif 'VIX' in econ_df.columns:
+            econ_cols.append('VIX')
+        elif 'VIXCLS' in econ_df.columns:
+            econ_df['VIX'] = econ_df['VIXCLS']
+            econ_cols.append('VIX')
+        
+        # Fed rate
+        if 'fed_funds_rate' in econ_df.columns:
+            econ_df['EFFR'] = econ_df['fed_funds_rate']
+            econ_cols.append('EFFR')
+        elif 'EFFR' in econ_df.columns:
+            econ_cols.append('EFFR')
+        elif 'DFF' in econ_df.columns:
+            econ_df['EFFR'] = econ_df['DFF']
+            econ_cols.append('EFFR')
+        
+        if not econ_cols:
+            logger.warning("No VIX or EFFR columns found")
+            return df
+        
+        # Merge with price data
+        df['date_key'] = pd.to_datetime(df['date']).dt.date
+        econ_subset = econ_df[['date'] + econ_cols].drop_duplicates('date')
+        
+        df = df.merge(econ_subset, left_on='date_key', right_on='date', 
+                      how='left', suffixes=('', '_econ'))
+        
+        if 'date_econ' in df.columns:
+            df = df.drop(columns=['date_econ'])
+        df = df.drop(columns=['date_key'])
+        
+        # Forward fill missing values
+        for col in econ_cols:
+            if col in df.columns:
+                df[col] = df[col].fillna(method='ffill')
+        
+        # Derived features
+        if 'VIX' in df.columns:
+            # VIX regime
+            df['vix_regime'] = pd.cut(df['VIX'], 
+                bins=[0, 15, 25, 100], 
+                labels=[0, 1, 2]  # 0=low, 1=normal, 2=high
+            ).astype(float)
+            
+            df['vix_change_5d'] = df['VIX'].pct_change(5)
+        
+        if 'EFFR' in df.columns:
+            # Rate direction
+            df['rate_change_20d'] = df['EFFR'].diff(20)
+        
+        logger.info(f"  Added {len(econ_cols)} economic features + derived")
+        
+    except Exception as e:
+        logger.warning(f"Failed to load economic data: {e}")
+    
+    return df
+
+
+def add_news_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add news sentiment features"""
+    from config import SILVER_DIR
+    from utils.lakehouse_helper import lakehouse_to_pandas, is_lakehouse_table
+    
+    df = df.copy()
+    news_path = SILVER_DIR / 'news_lakehouse'
+    
+    if not is_lakehouse_table(news_path):
+        logger.warning("News data not found, skipping sentiment features")
+        return df
+    
+    try:
+        news_df = lakehouse_to_pandas(news_path)
+        logger.info(f"  Loaded {len(news_df):,} news sentiment rows")
+        
+        # Standardize date
+        if 'date' in news_df.columns:
+            news_df['date'] = pd.to_datetime(news_df['date']).dt.date
+        
+        # Select columns
+        news_cols = ['date', 'ticker']
+        if 'avg_sentiment' in news_df.columns:
+            news_cols.append('avg_sentiment')
+        if 'news_count' in news_df.columns:
+            news_cols.append('news_count')
+        
+        if len(news_cols) <= 2:
+            logger.warning("No sentiment columns found in news data")
+            return df
+        
+        news_subset = news_df[news_cols].copy()
+        
+        # Merge with price data
+        df['date_key'] = pd.to_datetime(df['date']).dt.date
+        df = df.merge(news_subset, left_on=['date_key', 'ticker'], 
+                      right_on=['date', 'ticker'], how='left', suffixes=('', '_news'))
+        
+        if 'date_news' in df.columns:
+            df = df.drop(columns=['date_news'])
+        df = df.drop(columns=['date_key'])
+        
+        # Rename for clarity
+        if 'avg_sentiment' in df.columns:
+            df = df.rename(columns={'avg_sentiment': 'news_sentiment'})
+            df['news_sentiment'] = df['news_sentiment'].fillna(0)  # No news = neutral
+        
+        if 'news_count' in df.columns:
+            df['news_count'] = df['news_count'].fillna(0)
+            # Log transform for heavy-tailed distribution
+            df['news_attention'] = np.log1p(df['news_count'])
+        
+        # Sentiment momentum (5-day rolling)
+        if 'news_sentiment' in df.columns:
+            df['sentiment_ma5'] = df.groupby('ticker')['news_sentiment'].transform(
+                lambda x: x.rolling(window=5, min_periods=1).mean()
+            )
+        
+        logger.info("  Added news sentiment features")
+        
+    except Exception as e:
+        logger.warning(f"Failed to load news data: {e}")
+    
+    return df
+
+
 def add_target(df: pd.DataFrame, horizon: int = 1) -> pd.DataFrame:
     """Create target variable for ML models"""
     df = df.copy()
@@ -231,6 +382,12 @@ def engineer_features(df: pd.DataFrame,
     logger.info("Adding Returns...")
     df = add_returns(df)
     
+    logger.info("Adding Economic Features (VIX, EFFR)...")
+    df = add_economic_features(df)
+    
+    logger.info("Adding News Sentiment Features...")
+    df = add_news_features(df)
+    
     if include_target:
         logger.info(f"Adding Target (horizon={target_horizon})...")
         df = add_target(df, horizon=target_horizon)
@@ -248,6 +405,7 @@ def engineer_features(df: pd.DataFrame,
 def get_feature_columns() -> List[str]:
     """Return list of feature column names"""
     return [
+        # Technical indicators
         'sma_5', 'sma_10', 'sma_20', 'sma_50',
         'ema_12', 'ema_26',
         'rsi', 'macd', 'macd_signal', 'macd_hist',
@@ -256,6 +414,11 @@ def get_feature_columns() -> List[str]:
         'volatility_10', 'volatility_20', 'volatility_60',
         'volume_ratio', 'obv_trend',
         'return_1d', 'return_5d', 'return_10d', 'return_20d',
+        # Economic features
+        'VIX', 'vix_regime', 'vix_change_5d',
+        'EFFR', 'rate_change_20d',
+        # News sentiment features
+        'news_sentiment', 'news_count', 'news_attention', 'sentiment_ma5',
     ]
 
 
