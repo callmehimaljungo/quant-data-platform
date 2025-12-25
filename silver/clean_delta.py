@@ -87,7 +87,7 @@ def load_from_bronze() -> pd.DataFrame:
 # TRANSFORMATIONS
 # =============================================================================
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Standardize column names to lowercase"""
+    """Convert column names to lowercase."""
     rename_map = {}
     for col in df.columns:
         if col in COLUMN_MAPPING:
@@ -97,26 +97,26 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
     
     if rename_map:
         df = df.rename(columns=rename_map)
-        logger.info(f"✓ Standardized {len(rename_map)} column names")
+        logger.info(f"[OK] Standardized {len(rename_map)} column names")
     
     return df
 
 
 def convert_date_column(df: pd.DataFrame) -> pd.DataFrame:
-    """Ensure date column is datetime"""
+    """Ensure date column is datetime type."""
     if df['date'].dtype == 'object':
         df['date'] = pd.to_datetime(df['date'])
-        logger.info("✓ Converted date column to datetime")
+        logger.info("[OK] Converted date column to datetime")
     return df
 
 
 def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
-    """Remove duplicates"""
+    """Remove duplicate (ticker, date) pairs."""
     initial = len(df)
     df = df.sort_values('date').drop_duplicates(subset=['ticker', 'date'], keep='last')
     removed = initial - len(df)
     if removed > 0:
-        logger.info(f"✓ Removed {removed:,} duplicate rows")
+        logger.info(f"[OK] Removed {removed:,} duplicate rows")
     return df
 
 
@@ -128,12 +128,12 @@ def remove_nulls(df: pd.DataFrame) -> pd.DataFrame:
     df = df.dropna(subset=existing)
     removed = initial - len(df)
     if removed > 0:
-        logger.info(f"✓ Removed {removed:,} rows with null values")
+        logger.info(f"[OK] Removed {removed:,} rows with null values")
     return df
 
 
 def apply_quality_gates(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply quality filters"""
+    """Filter invalid rows (close<=0, high<low, etc)."""
     initial = len(df)
     
     # close > 0
@@ -146,18 +146,18 @@ def apply_quality_gates(df: pd.DataFrame) -> pd.DataFrame:
     df = df[df['open'] > 0]
     
     removed = initial - len(df)
-    logger.info(f"✓ Quality gates: removed {removed:,} invalid rows")
-    logger.info(f"✓ Remaining: {len(df):,} rows")
+    logger.info(f"[OK] Quality gates: removed {removed:,} invalid rows")
+    logger.info(f"[OK] Remaining: {len(df):,} rows")
     
     return df
 
 
 def calculate_daily_return(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate daily returns"""
+    """Calculate daily pct_change for each ticker."""
     df = df.sort_values(['ticker', 'date'])
     df['daily_return'] = df.groupby('ticker')['close'].pct_change() * 100
     df['daily_return'] = df['daily_return'].fillna(0)
-    logger.info(f"✓ Calculated daily returns for {df['ticker'].nunique():,} tickers")
+    logger.info(f"[OK] Calculated daily returns for {df['ticker'].nunique():,} tickers")
     return df
 
 
@@ -167,7 +167,7 @@ def add_metadata(df: pd.DataFrame) -> pd.DataFrame:
     df['industry'] = 'Unknown'
     df['enriched_at'] = datetime.now()
     df['data_version'] = 'silver_lakehouse_v1'
-    logger.info("✓ Added enrichment metadata")
+    logger.info("[OK] Added enrichment metadata")
     return df
 
 
@@ -188,7 +188,7 @@ def process_silver_lakehouse() -> pd.DataFrame:
     
     # Step 1: Load from Bronze
     df = load_from_bronze()
-    logger.info(f"✓ Loaded {len(df):,} rows from Bronze")
+    logger.info(f"[OK] Loaded {len(df):,} rows from Bronze")
     
     # Step 2: Standardize columns
     df = standardize_columns(df)
@@ -222,7 +222,7 @@ def process_silver_lakehouse() -> pd.DataFrame:
     duration = (datetime.now() - start_time).total_seconds()
     
     logger.info("=" * 70)
-    logger.info("✓✓✓ SILVER LAKEHOUSE PROCESSING COMPLETED ✓✓✓")
+    logger.info(" SILVER LAKEHOUSE PROCESSING COMPLETED ")
     logger.info(f"Duration: {duration:.2f} seconds")
     logger.info(f"Total rows: {len(df):,}")
     logger.info(f"Tickers: {df['ticker'].nunique():,}")
@@ -251,7 +251,7 @@ def convert_silver_to_lakehouse():
     # Load existing Silver
     logger.info(f"Loading from Parquet: {SILVER_PARQUET_PATH}")
     df = pd.read_parquet(SILVER_PARQUET_PATH)
-    logger.info(f"✓ Loaded {len(df):,} rows")
+    logger.info(f"[OK] Loaded {len(df):,} rows")
     
     # Update metadata
     df['lakehouse_migrated_at'] = datetime.now()
@@ -268,19 +268,19 @@ def convert_silver_to_lakehouse():
     duration = (datetime.now() - start_time).total_seconds()
     
     logger.info("=" * 70)
-    logger.info("✓✓✓ SILVER LAKEHOUSE MIGRATION COMPLETED ✓✓✓")
+    logger.info(" SILVER LAKEHOUSE MIGRATION COMPLETED ")
     logger.info(f"Duration: {duration:.2f} seconds")
     logger.info(f"Output: {SILVER_LAKEHOUSE_PATH}")
     logger.info("=" * 70)
 
 
 def main():
-    """Main execution"""
+    """CLI entry point."""
     mode = sys.argv[1] if len(sys.argv) > 1 else 'convert'
     
     logger.info("")
-    logger.info("🚀 SILVER LAYER - DATA LAKEHOUSE")
-    logger.info(f"📊 Mode: {mode}")
+    logger.info(" SILVER LAYER - DATA LAKEHOUSE")
+    logger.info(f" Mode: {mode}")
     logger.info("")
     
     try:
@@ -297,7 +297,7 @@ def main():
         return 0
         
     except Exception as e:
-        logger.error(f"❌ Failed: {str(e)}")
+        logger.error(f"[ERR] Failed: {str(e)}")
         import traceback
         traceback.print_exc()
         return 1

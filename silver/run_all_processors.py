@@ -50,14 +50,14 @@ def run_all_processors(
     
     logger.info("")
     logger.info("=" * 70)
-    logger.info("🚀 SILVER LAYER: RUNNING ALL PROCESSORS")
+    logger.info(" SILVER LAYER: RUNNING ALL PROCESSORS")
     logger.info("=" * 70)
     logger.info("")
     
     # 1. Clean price data
     if not skip_clean:
         logger.info("-" * 70)
-        logger.info("📊 STEP 1: Cleaning Price Data")
+        logger.info(" STEP 1: Cleaning Price Data")
         logger.info("-" * 70)
         try:
             from silver.clean import main as clean_main
@@ -80,7 +80,7 @@ def run_all_processors(
             result = metadata_main()
             results['metadata'] = 'SUCCESS' if result == 0 else 'FAILED'
         except FileNotFoundError as e:
-            logger.warning(f"⚠️ Metadata not available: {e}")
+            logger.warning(f"[WARN] Metadata not available: {e}")
             results['metadata'] = 'NOT AVAILABLE'
         except Exception as e:
             logger.error(f"Metadata processing failed: {e}")
@@ -99,7 +99,7 @@ def run_all_processors(
             result = news_main()
             results['news'] = 'SUCCESS' if result == 0 else 'FAILED'
         except FileNotFoundError as e:
-            logger.warning(f"⚠️ News not available: {e}")
+            logger.warning(f"[WARN] News not available: {e}")
             results['news'] = 'NOT AVAILABLE'
         except Exception as e:
             logger.error(f"News processing failed: {e}")
@@ -111,14 +111,14 @@ def run_all_processors(
     # 4. Process economic (CSV)
     if not skip_economic:
         logger.info("-" * 70)
-        logger.info("📈 STEP 4: Processing Economic Data (CSV)")
+        logger.info(" STEP 4: Processing Economic Data (CSV)")
         logger.info("-" * 70)
         try:
             from silver.process_economic import main as economic_main
             result = economic_main()
             results['economic'] = 'SUCCESS' if result == 0 else 'FAILED'
         except FileNotFoundError as e:
-            logger.warning(f"⚠️ Economic data not available: {e}")
+            logger.warning(f"[WARN] Economic data not available: {e}")
             results['economic'] = 'NOT AVAILABLE'
         except Exception as e:
             logger.error(f"Economic processing failed: {e}")
@@ -152,7 +152,7 @@ def run_all_processors(
     logger.info("=" * 70)
     
     for processor, status in results.items():
-        emoji = "✅" if 'SUCCESS' in str(status) else "❌" if 'ERROR' in str(status) else "⏭️"
+        emoji = "✅" if 'SUCCESS' in str(status) else "[ERR]" if 'ERROR' in str(status) else "⏭️"
         logger.info(f"  {emoji} {processor.upper()}: {status}")
     
     logger.info("")
@@ -175,7 +175,7 @@ def run_all_processors(
     for path, desc in outputs:
         full_path = SILVER_DIR / path
         exists = full_path.exists()
-        emoji = "✓" if exists else "✗"
+        emoji = "[OK]" if exists else "[FAIL]"
         logger.info(f"  {emoji} {path}: {desc}")
     
     logger.info("")

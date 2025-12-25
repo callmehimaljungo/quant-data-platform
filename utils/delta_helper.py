@@ -37,10 +37,10 @@ try:
     import deltalake
     from deltalake import DeltaTable, write_deltalake
     DELTA_AVAILABLE = True
-    logger.info(f"✓ Delta Lake (deltalake-rs) version: {deltalake.__version__}")
+    logger.info(f"[OK] Delta Lake (deltalake-rs) version: {deltalake.__version__}")
 except ImportError:
     DELTA_AVAILABLE = False
-    logger.warning("⚠️ deltalake not installed. Install with: pip install deltalake")
+    logger.warning("[WARN] deltalake not installed. Install with: pip install deltalake")
 
 
 # =============================================================================
@@ -91,7 +91,7 @@ def pandas_to_delta(
         partition_by=partition_by
     )
     
-    logger.info(f"✓ Saved to Delta Table: {path}")
+    logger.info(f"[OK] Saved to Delta Table: {path}")
     
     return path
 
@@ -130,7 +130,7 @@ def delta_to_pandas(
     
     df = dt.to_pandas()
     
-    logger.info(f"✓ Loaded {len(df):,} rows from Delta Table")
+    logger.info(f"[OK] Loaded {len(df):,} rows from Delta Table")
     
     return df
 
@@ -226,7 +226,7 @@ def convert_parquet_to_delta(
     # Save as Delta
     pandas_to_delta(df, delta_path)
     
-    logger.info(f"✓ Converted to Delta Table: {delta_path}")
+    logger.info(f"[OK] Converted to Delta Table: {delta_path}")
     
     return str(delta_path)
 
@@ -248,7 +248,7 @@ def vacuum_table(path: Union[str, Path], retention_hours: int = 168, dry_run: bo
         return files
     else:
         files = dt.vacuum(retention_hours=retention_hours, dry_run=False)
-        logger.info(f"✓ Vacuumed {len(files)} files from: {path}")
+        logger.info(f"[OK] Vacuumed {len(files)} files from: {path}")
         return files
 
 
@@ -262,7 +262,7 @@ if __name__ == "__main__":
     print("=" * 70)
     
     if DELTA_AVAILABLE:
-        print(f"✓ deltalake version: {deltalake.__version__}")
+        print(f"[OK] deltalake version: {deltalake.__version__}")
         
         # Test with sample data
         try:
@@ -276,11 +276,11 @@ if __name__ == "__main__":
             
             # Test write
             pandas_to_delta(test_df, test_path)
-            print(f"✓ Test write successful: {test_path}")
+            print(f"[OK] Test write successful: {test_path}")
             
             # Test read
             read_df = delta_to_pandas(test_path)
-            print(f"✓ Test read successful: {len(read_df)} rows")
+            print(f"[OK] Test read successful: {len(read_df)} rows")
             
             # Test history
             show_history(test_path)
@@ -288,14 +288,14 @@ if __name__ == "__main__":
             # Cleanup
             import shutil
             shutil.rmtree(test_path, ignore_errors=True)
-            print("✓ Test cleanup complete")
+            print("[OK] Test cleanup complete")
             
         except Exception as e:
-            print(f"❌ Error: {str(e)}")
+            print(f"[ERR] Error: {str(e)}")
             import traceback
             traceback.print_exc()
     else:
-        print("❌ Delta Lake not available")
+        print("[ERR] Delta Lake not available")
         print("  Install with: pip install deltalake")
     
     print("=" * 70)

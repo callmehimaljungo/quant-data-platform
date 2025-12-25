@@ -1,18 +1,8 @@
 """
 Bronze Layer: Ingest raw stock data from Kaggle or Cloudflare R2
-Author: Quant Data Platform Team
-Date: 2024
 
-Purpose:
-- Load raw OHLCV data from Kaggle API or R2 storage
-- Validate schema according to Section 3.1
-- NO transformations (raw data only)
-- Add ingestion metadata
-- Quality checks: schema validation + null checks on critical columns
-
-Data Sources:
-- PRIMARY: Kaggle (hmingjungo/stock-price dataset)
-- ALTERNATIVE: Cloudflare R2 (if data already uploaded)
+Handles downloading OHLCV data and saving as Parquet.
+Supports both Kaggle API and R2 storage as data sources.
 """
 
 import os
@@ -32,27 +22,25 @@ try:
     R2_AVAILABLE = True
 except ImportError:
     R2_AVAILABLE = False
-    print("⚠️  boto3 not installed - R2 support disabled")
+    print("boto3 not installed - R2 support disabled")
 
 try:
     import kaggle
     KAGGLE_AVAILABLE = True
 except ImportError:
     KAGGLE_AVAILABLE = False
-    print("⚠️  kaggle not installed - Kaggle support disabled")
+    print("kaggle not installed - Kaggle support disabled")
 
-# =============================================================================
-# LOGGING SETUP (Section 7.2)
-# =============================================================================
+# Logging
+# -----------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# CONSTANTS (Section 3.1 - Price Data Schema)
-# =============================================================================
+# Schema and constants
+# -----------------------------------------------------------------------------
 EXPECTED_SCHEMA = {
     'date': 'datetime64[ns]',
     'ticker': 'object',
@@ -76,28 +64,7 @@ R2_PATH = 'raw/prices/'
 # KAGGLE INGESTION (NEW - PRIMARY METHOD)
 # =============================================================================
 def ingest_from_kaggle(dataset: str = KAGGLE_DATASET) -> pd.DataFrame:
-    """
-    Download and load stock data directly from Kaggle
-    
-    This is the PRIMARY method for Bronze layer ingestion.
-    
-    Process:
-    1. Download dataset from Kaggle API
-    2. Extract CSV file
-    3. Load into DataFrame
-    4. Standardize column names
-    5. Validate schema
-    
-    Args:
-        dataset: Kaggle dataset identifier (e.g., 'hmingjungo/stock-price')
-        
-    Returns:
-        pd.DataFrame: Raw stock data
-        
-    Raises:
-        ImportError: If kaggle package not installed
-        Exception: If download or loading fails
-    """
+    """Download stock data from Kaggle API."""
     if not KAGGLE_AVAILABLE:
         raise ImportError(
             "Kaggle package not installed. Install with: pip install kaggle"
@@ -119,7 +86,7 @@ def ingest_from_kaggle(dataset: str = KAGGLE_DATASET) -> pd.DataFrame:
             path=TEMP_DIR,
             unzip=True
         )
-        logger.info("✓ Download completed")
+        logger.info("[OK] Download completed")
         
         # Step 2: Find CSV file (Kaggle extracts to various names)
         csv_files = [f for f in os.listdir(TEMP_DIR) if f.endswith('.csv')]
@@ -146,9 +113,9 @@ def ingest_from_kaggle(dataset: str = KAGGLE_DATASET) -> pd.DataFrame:
             }
         )
         
-        logger.info(f"✓ Loaded {len(df):,} rows")
-        logger.info(f"✓ Unique tickers: {df['Ticker'].nunique():,}")
-        logger.info(f"✓ Date range: {df['Date'].min()} to {df['Date'].max()}")
+        logger.info(f"[OK] Loaded {len(df):,} rows")
+        logger.info(f"[OK] Unique tickers: {df['Ticker'].nunique():,}")
+        logger.info(f"[OK] Date range: {df['Date'].min()} to {df['Date'].max()}")
         
         # Step 4: Standardize column names (lowercase for consistency)
         # Note: Keep original for now, will standardize in Silver layer
@@ -156,7 +123,7 @@ def ingest_from_kaggle(dataset: str = KAGGLE_DATASET) -> pd.DataFrame:
         # Clean up temp files
         try:
             os.remove(csv_path)
-            logger.info("✓ Cleaned up temp files")
+            logger.info("[OK] Cleaned up temp files")
         except:
             pass
         
@@ -178,26 +145,10 @@ def ingest_from_kaggle(dataset: str = KAGGLE_DATASET) -> pd.DataFrame:
 
 
 # =============================================================================
-# R2 CONNECTION (Section 8.1) - ALTERNATIVE METHOD
+# R2 CONNECTION  - ALTERNATIVE METHOD
 # =============================================================================
 def get_r2_client():
-    """
-    Connect to Cloudflare R2 (S3-compatible storage)
-    
-    This is an ALTERNATIVE method if data is already in R2.
-    
-    Required environment variables:
-    - R2_ENDPOINT: R2 endpoint URL
-    - R2_ACCESS_KEY: Access key ID
-    - R2_SECRET_KEY: Secret access key
-    - R2_BUCKET: Bucket name
-    
-    Returns:
-        boto3.client: S3 client configured for R2
-    
-    Raises:
-        ValueError: If required environment variables are missing
-    """
+    """Connect to R2 storage. Requires R2_* env vars."""
     if not R2_AVAILABLE:
         raise ImportError("boto3 not installed. Install with: pip install boto3")
     
@@ -228,21 +179,7 @@ def load_from_r2_with_retry(
     key: str, 
     max_retries: int = 3
 ) -> pd.DataFrame:
-    """
-    Load a single parquet file from R2 with retry logic
-    
-    Args:
-        client: boto3 S3 client
-        bucket: R2 bucket name
-        key: Object key/path
-        max_retries: Maximum number of retry attempts
-        
-    Returns:
-        pd.DataFrame: Loaded data
-        
-    Raises:
-        Exception: If all retries fail
-    """
+    """Load parquet from R2 with exponential backoff."""
     for attempt in range(max_retries):
         try:
             logger.info(f"Attempting to load {key} (attempt {attempt + 1}/{max_retries})")
@@ -275,17 +212,7 @@ def load_from_r2_with_retry(
 
 
 def list_r2_objects(client, bucket: str, prefix: str) -> List[str]:
-    """
-    List all objects in R2 bucket with given prefix
-    
-    Args:
-        client: boto3 S3 client
-        bucket: R2 bucket name
-        prefix: Object prefix/path
-        
-    Returns:
-        List of object keys
-    """
+    """List objects in R2 bucket with given prefix."""
     try:
         paginator = client.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
@@ -304,23 +231,7 @@ def list_r2_objects(client, bucket: str, prefix: str) -> List[str]:
 
 
 def ingest_from_r2() -> pd.DataFrame:
-    """
-    Load stock data from R2 storage (ALTERNATIVE METHOD)
-    
-    Use this if you have already uploaded data to R2.
-    
-    Process:
-    1. Connect to R2
-    2. List all files in raw/prices/
-    3. Load each file with retry logic
-    4. Concatenate all data
-    
-    Returns:
-        pd.DataFrame: Consolidated raw data
-        
-    Raises:
-        Exception: If ingestion fails at any step
-    """
+    """Load stock data from R2 storage."""
     start_time = datetime.now()
     logger.info("=" * 70)
     logger.info("BRONZE LAYER INGESTION FROM R2")
@@ -390,23 +301,10 @@ def ingest_from_r2() -> pd.DataFrame:
 
 
 # =============================================================================
-# SCHEMA VALIDATION (Section 7.4)
+# SCHEMA VALIDATION 
 # =============================================================================
 def validate_schema(df: pd.DataFrame) -> None:
-    """
-    Validate DataFrame schema against expected schema
-    
-    Checks:
-    1. All required columns present
-    2. Data types match expected types
-    3. No nulls in critical columns
-    
-    Args:
-        df: DataFrame to validate
-        
-    Raises:
-        ValueError: If schema validation fails
-    """
+    """Validate DataFrame has required columns and types."""
     # Check for missing columns
     missing_cols = set(REQUIRED_COLUMNS) - set(df.columns)
     if missing_cols:
@@ -440,33 +338,24 @@ def validate_schema(df: pd.DataFrame) -> None:
             f"Schema validation FAILED: Null values in critical columns - {null_counts}"
         )
     
-    logger.info("✓ Schema validation PASSED: All checks successful")
+    logger.info("[OK] Schema validation PASSED: All checks successful")
 
 
 # =============================================================================
 # UNIFIED INGESTION FUNCTION
 # =============================================================================
 def ingest_all_stocks(source: str = 'auto') -> pd.DataFrame:
-    """
-    Main ingestion function with automatic source detection
-    
-    Args:
-        source: Data source ('kaggle', 'r2', or 'auto')
-                'auto' will try Kaggle first, then R2
-    
-    Returns:
-        pd.DataFrame: Raw stock data with ingestion timestamp
-    """
+    """Main ingestion with auto source detection."""
     start_time = datetime.now()
     
     try:
         # Auto-detect source
         if source == 'auto':
             if KAGGLE_AVAILABLE:
-                logger.info("🔍 Auto-detect: Using Kaggle as primary source")
+                logger.info(" Auto-detect: Using Kaggle as primary source")
                 source = 'kaggle'
             elif R2_AVAILABLE and os.environ.get('R2_ENDPOINT'):
-                logger.info("🔍 Auto-detect: Using R2 as fallback source")
+                logger.info(" Auto-detect: Using R2 as fallback source")
                 source = 'r2'
             else:
                 raise ValueError(
@@ -485,7 +374,7 @@ def ingest_all_stocks(source: str = 'auto') -> pd.DataFrame:
         
         # Add ingestion metadata
         df['ingested_at'] = datetime.now()
-        logger.info(f"✓ Added ingestion timestamp: {df['ingested_at'].iloc[0]}")
+        logger.info(f"[OK] Added ingestion timestamp: {df['ingested_at'].iloc[0]}")
         
         # Validate schema
         logger.info("Running schema validation...")
@@ -494,7 +383,7 @@ def ingest_all_stocks(source: str = 'auto') -> pd.DataFrame:
         # Success summary
         duration = (datetime.now() - start_time).total_seconds()
         logger.info("=" * 70)
-        logger.info(f"✓✓✓ BRONZE LAYER INGESTION COMPLETED SUCCESSFULLY ✓✓✓")
+        logger.info(f" BRONZE LAYER INGESTION COMPLETED SUCCESSFULLY ")
         logger.info(f"Duration: {duration:.2f} seconds")
         logger.info(f"Total rows: {len(df):,}")
         logger.info(f"Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
@@ -505,20 +394,14 @@ def ingest_all_stocks(source: str = 'auto') -> pd.DataFrame:
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
         logger.error("=" * 70)
-        logger.error(f"❌ BRONZE LAYER INGESTION FAILED after {duration:.2f} seconds")
+        logger.error(f"[ERR] BRONZE LAYER INGESTION FAILED after {duration:.2f} seconds")
         logger.error(f"Error: {str(e)}")
         logger.error("=" * 70)
         raise
 
 
 def save_to_bronze(df: pd.DataFrame, output_path: str = OUTPUT_PATH) -> None:
-    """
-    Save DataFrame to Bronze layer (Parquet format)
-    
-    Args:
-        df: DataFrame to save
-        output_path: Output file path
-    """
+    """Save DataFrame to Bronze layer as Parquet."""
     try:
         # Create directory if not exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -533,8 +416,8 @@ def save_to_bronze(df: pd.DataFrame, output_path: str = OUTPUT_PATH) -> None:
         )
         
         file_size = os.path.getsize(output_path) / 1024**2  # MB
-        logger.info(f"✓ Data saved to {output_path}")
-        logger.info(f"✓ File size: {file_size:.2f} MB")
+        logger.info(f"[OK] Data saved to {output_path}")
+        logger.info(f"[OK] File size: {file_size:.2f} MB")
         
     except Exception as e:
         logger.error(f"Failed to save data: {str(e)}")
@@ -545,30 +428,15 @@ def save_to_bronze(df: pd.DataFrame, output_path: str = OUTPUT_PATH) -> None:
 # MAIN EXECUTION
 # =============================================================================
 def main():
-    """
-    Main execution function
-    
-    Usage:
-        python bronze/ingest.py              # Auto-detect source
-        python bronze/ingest.py kaggle       # Force Kaggle
-        python bronze/ingest.py r2           # Force R2
-    
-    For Kaggle (default):
-        - Requires: pip install kaggle
-        - Requires: ~/.kaggle/kaggle.json with API credentials
-    
-    For R2 (alternative):
-        - Requires: pip install boto3
-        - Environment variables: R2_ENDPOINT, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET
-    """
+    """CLI entry point."""
     import sys
     
     # Get source from command line argument
     source = sys.argv[1] if len(sys.argv) > 1 else 'auto'
     
     logger.info("")
-    logger.info("🚀 BRONZE LAYER INGESTION")
-    logger.info(f"📊 Data Source: {source}")
+    logger.info(" BRONZE LAYER INGESTION")
+    logger.info(f" Data Source: {source}")
     logger.info("")
     
     try:
@@ -579,14 +447,14 @@ def main():
         save_to_bronze(df)
         
         logger.info("")
-        logger.info("✅ Bronze layer ingestion completed successfully!")
-        logger.info(f"✅ Output: {OUTPUT_PATH}")
+        logger.info("[OK] Bronze layer ingestion completed successfully!")
+        logger.info(f"[OK] Output: {OUTPUT_PATH}")
         logger.info("")
         return 0
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ Bronze layer ingestion failed: {str(e)}")
+        logger.error(f"[ERR] Bronze layer ingestion failed: {str(e)}")
         logger.error("")
         return 1
 

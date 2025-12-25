@@ -48,10 +48,10 @@ logger = logging.getLogger(__name__)
 try:
     import yfinance as yf
     YFINANCE_AVAILABLE = True
-    logger.info("✓ yfinance available")
+    logger.info("[OK] yfinance available")
 except ImportError:
     YFINANCE_AVAILABLE = False
-    logger.warning("⚠️ yfinance not installed. Install with: pip install yfinance")
+    logger.warning("[WARN] yfinance not installed. Install with: pip install yfinance")
 
 
 # =============================================================================
@@ -171,7 +171,7 @@ def fetch_benchmark_data(
             
             all_data.append(df)
             
-            logger.info(f"✓ Fetched {len(df):,} rows for {ticker}")
+            logger.info(f"[OK] Fetched {len(df):,} rows for {ticker}")
             
         except Exception as e:
             logger.error(f"Failed to fetch {ticker}: {e}")
@@ -314,9 +314,9 @@ def load_benchmark_data(
         df = generate_sample_benchmark_data(tickers=tickers, start_date=start_date, end_date=end_date)
     
     # Log summary
-    logger.info(f"\n✓ Loaded {len(df):,} data points")
-    logger.info(f"✓ Benchmarks: {df['ticker'].nunique()}")
-    logger.info(f"✓ Date range: {df['date'].min()} to {df['date'].max()}")
+    logger.info(f"\n[OK] Loaded {len(df):,} data points")
+    logger.info(f"[OK] Benchmarks: {df['ticker'].nunique()}")
+    logger.info(f"[OK] Date range: {df['date'].min()} to {df['date'].max()}")
     
     # Benchmark summary
     logger.info("\nBenchmark Summary:")
@@ -344,7 +344,7 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
     logger.info(f"Saving to Lakehouse: {OUTPUT_DIR}")
     path = pandas_to_lakehouse(df, OUTPUT_DIR, mode="overwrite")
     
-    logger.info(f"✓ Saved to {path}")
+    logger.info(f"[OK] Saved to {path}")
     return path
 
 
@@ -356,7 +356,7 @@ def register_in_universe(df: pd.DataFrame):
     tickers = df['ticker'].unique().tolist()
     universe.register_source('benchmarks', tickers)
     
-    logger.info(f"✓ Registered {len(tickers):,} benchmarks in universe")
+    logger.info(f"[OK] Registered {len(tickers):,} benchmarks in universe")
 
 
 # =============================================================================
@@ -364,9 +364,9 @@ def register_in_universe(df: pd.DataFrame):
 # =============================================================================
 
 def main(start_date: str = '2010-01-01', test: bool = False):
-    """Main execution function"""
+    """CLI entry point."""
     logger.info("")
-    logger.info("🚀 BRONZE LAYER: BENCHMARK DATA LOADER")
+    logger.info(" BRONZE LAYER: BENCHMARK DATA LOADER")
     logger.info("")
     
     try:
@@ -391,7 +391,7 @@ def main(start_date: str = '2010-01-01', test: bool = False):
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ Benchmark loading failed: {str(e)}")
+        logger.error(f"[ERR] Benchmark loading failed: {str(e)}")
         import traceback
         traceback.print_exc()
         logger.error("")

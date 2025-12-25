@@ -34,7 +34,7 @@ R2_CONFIG = {
     'bucket': os.environ.get('R2_BUCKET', ''),
 }
 
-# R2 Paths (Section 8.2)
+# R2 Paths 
 R2_PATHS = {
     'raw_prices': 'raw/prices/',
     'bronze': 'processed/bronze/',
@@ -44,7 +44,7 @@ R2_PATHS = {
 }
 
 # =============================================================================
-# DATA SCHEMA (Section 3.1)
+# DATA SCHEMA 
 # =============================================================================
 PRICE_DATA_SCHEMA = {
     'date': 'datetime64[ns]',
@@ -67,7 +67,7 @@ METADATA_SCHEMA = {
 }
 
 # =============================================================================
-# GICS SECTORS (Section 3.3) - Official GICS Standard Names
+# GICS SECTORS  - Official GICS Standard Names
 # =============================================================================
 GICS_SECTORS = [
     'Information Technology',   # AAPL, MSFT, NVDA (or 'Technology' for compatibility)
@@ -101,7 +101,7 @@ MARKET_CAP_THRESHOLDS = {
 }
 
 # =============================================================================
-# QUALITY GATES (Section 2.2)
+# QUALITY GATES 
 # =============================================================================
 BRONZE_QUALITY_CHECKS = [
     'schema_validation',
@@ -125,7 +125,7 @@ BACKTEST_CONFIG = {
     'slippage': 0.0005,        # 0.05% slippage
 }
 
-# Evaluation metrics (Section 6.2)
+# Evaluation metrics 
 BACKTEST_METRICS = [
     'total_return',
     'annualized_return',
@@ -137,7 +137,7 @@ BACKTEST_METRICS = [
 ]
 
 # =============================================================================
-# LOGGING CONFIGURATION (Section 7.2)
+# LOGGING CONFIGURATION 
 # =============================================================================
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
@@ -223,15 +223,15 @@ if __name__ == "__main__":
         ('Metadata', METADATA_DIR),
         ('Backtest', BACKTEST_DIR)
     ]:
-        exists = "✓" if path.exists() else "✗"
+        exists = "[OK]" if path.exists() else "[FAIL]"
         print(f"  {exists} {name}: {path}")
     
     print("\nR2 Configuration:")
     r2_valid = validate_r2_config()
     if r2_valid:
-        print("  ✓ All R2 credentials configured")
+        print("  [OK] All R2 credentials configured")
     else:
-        print("  ✗ R2 credentials incomplete - check environment variables")
+        print("  [FAIL] R2 credentials incomplete - check environment variables")
     
     print("\nGICS Sectors:")
     for sector in GICS_SECTORS:

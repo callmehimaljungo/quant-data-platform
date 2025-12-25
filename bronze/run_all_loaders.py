@@ -51,7 +51,7 @@ def run_all_loaders(
     
     logger.info("")
     logger.info("=" * 70)
-    logger.info("🚀 BRONZE LAYER: RUNNING ALL DATA LOADERS")
+    logger.info(" BRONZE LAYER: RUNNING ALL DATA LOADERS")
     logger.info("=" * 70)
     logger.info(f"Mode: {'TEST' if test_mode else 'FULL'}")
     logger.info("")
@@ -59,7 +59,7 @@ def run_all_loaders(
     # 1. Stock Metadata (JSON from yfinance)
     if not skip_metadata:
         logger.info("-" * 70)
-        logger.info("📊 STEP 1: Loading Stock Metadata (JSON)")
+        logger.info(" STEP 1: Loading Stock Metadata (JSON)")
         logger.info("-" * 70)
         try:
             from bronze.metadata_loader import main as metadata_main
@@ -91,7 +91,7 @@ def run_all_loaders(
     # 3. Economic Indicators (CSV from FRED)
     if not skip_economic:
         logger.info("-" * 70)
-        logger.info("📈 STEP 3: Loading Economic Indicators (CSV)")
+        logger.info(" STEP 3: Loading Economic Indicators (CSV)")
         logger.info("-" * 70)
         try:
             from bronze.economic_loader import main as economic_main
@@ -107,7 +107,7 @@ def run_all_loaders(
     # 4. Benchmark Data (Parquet from yfinance)
     if not skip_benchmarks:
         logger.info("-" * 70)
-        logger.info("📊 STEP 4: Loading Benchmark Data (Parquet)")
+        logger.info(" STEP 4: Loading Benchmark Data (Parquet)")
         logger.info("-" * 70)
         try:
             from bronze.benchmark_loader import main as benchmark_main
@@ -157,7 +157,7 @@ def run_all_loaders(
     logger.info("=" * 70)
     
     for loader, status in results.items():
-        emoji = "✅" if 'SUCCESS' in str(status) else "❌" if 'ERROR' in str(status) or 'FAILED' in str(status) else "⏭️"
+        emoji = "✅" if 'SUCCESS' in str(status) else "[ERR]" if 'ERROR' in str(status) or 'FAILED' in str(status) else "⏭️"
         logger.info(f"  {emoji} {loader.upper()}: {status}")
     
     logger.info("")

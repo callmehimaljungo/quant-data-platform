@@ -153,7 +153,7 @@ def calculate_sector_metrics(df: pd.DataFrame) -> pd.DataFrame:
         sector_metrics.append(metrics)
     
     result = pd.DataFrame(sector_metrics)
-    logger.info(f"✓ Calculated metrics for {len(result)} sectors")
+    logger.info(f"[OK] Calculated metrics for {len(result)} sectors")
     
     return result
 
@@ -199,7 +199,7 @@ def calculate_ticker_metrics(df: pd.DataFrame, top_n: int = 100) -> pd.DataFrame
     
     result = pd.DataFrame(ticker_metrics)
     result = result.sort_values('sharpe_ratio', ascending=False)
-    logger.info(f"✓ Calculated metrics for {len(result)} tickers")
+    logger.info(f"[OK] Calculated metrics for {len(result)} tickers")
     
     return result
 
@@ -227,7 +227,7 @@ def calculate_monthly_performance(df: pd.DataFrame) -> pd.DataFrame:
     
     monthly['year_month'] = monthly['year_month'].astype(str)
     
-    logger.info(f"✓ Calculated {len(monthly)} months of performance")
+    logger.info(f"[OK] Calculated {len(monthly)} months of performance")
     
     return monthly
 
@@ -249,7 +249,7 @@ def run_sector_analysis() -> Dict[str, pd.DataFrame]:
     
     # Load Silver data
     df = load_silver_data()
-    logger.info(f"✓ Loaded {len(df):,} rows from Silver layer")
+    logger.info(f"[OK] Loaded {len(df):,} rows from Silver layer")
     
     # Calculate metrics
     results = {}
@@ -284,7 +284,7 @@ def run_sector_analysis() -> Dict[str, pd.DataFrame]:
     duration = (datetime.now() - start_time).total_seconds()
     
     logger.info("=" * 70)
-    logger.info("✓✓✓ GOLD LAYER COMPLETED ✓✓✓")
+    logger.info(" GOLD LAYER COMPLETED ")
     logger.info(f"Duration: {duration:.2f} seconds")
     logger.info(f"Outputs:")
     logger.info(f"  - Sector metrics: {len(sector_metrics)} sectors")
@@ -309,7 +309,7 @@ def run_sector_analysis() -> Dict[str, pd.DataFrame]:
 def main():
     """Main execution"""
     logger.info("")
-    logger.info("🚀 GOLD LAYER - ANALYTICS")
+    logger.info(" GOLD LAYER - ANALYTICS")
     logger.info("")
     
     try:
@@ -325,7 +325,7 @@ def main():
         return 0
         
     except Exception as e:
-        logger.error(f"❌ Failed: {str(e)}")
+        logger.error(f"[ERR] Failed: {str(e)}")
         import traceback
         traceback.print_exc()
         return 1

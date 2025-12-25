@@ -58,7 +58,7 @@ def convert_bronze_to_lakehouse():
     # Load Parquet
     logger.info(f"Loading from Parquet: {PARQUET_PATH}")
     df = pd.read_parquet(PARQUET_PATH)
-    logger.info(f"✓ Loaded {len(df):,} rows")
+    logger.info(f"[OK] Loaded {len(df):,} rows")
     
     # Add migration metadata
     df['lakehouse_migrated_at'] = datetime.now()
@@ -75,7 +75,7 @@ def convert_bronze_to_lakehouse():
     duration = (datetime.now() - start_time).total_seconds()
     
     logger.info("=" * 70)
-    logger.info("✓✓✓ BRONZE LAKEHOUSE MIGRATION COMPLETED ✓✓✓")
+    logger.info(" BRONZE LAKEHOUSE MIGRATION COMPLETED ")
     logger.info(f"Duration: {duration:.2f} seconds")
     logger.info(f"Rows: {len(df):,}")
     logger.info(f"Output: {LAKEHOUSE_PATH}")
@@ -114,7 +114,7 @@ def ingest_from_kaggle_to_lakehouse():
     duration = (datetime.now() - start_time).total_seconds()
     
     logger.info("=" * 70)
-    logger.info("✓✓✓ BRONZE LAKEHOUSE INGESTION COMPLETED ✓✓✓")
+    logger.info(" BRONZE LAKEHOUSE INGESTION COMPLETED ")
     logger.info(f"Duration: {duration:.2f} seconds")
     logger.info(f"Rows: {len(df):,}")
     logger.info(f"Output: {LAKEHOUSE_PATH}")
@@ -124,12 +124,12 @@ def ingest_from_kaggle_to_lakehouse():
 
 
 def main():
-    """Main execution"""
+    """CLI entry point."""
     source = sys.argv[1] if len(sys.argv) > 1 else 'convert'
     
     logger.info("")
-    logger.info("🚀 BRONZE LAYER - DATA LAKEHOUSE")
-    logger.info(f"📊 Mode: {source}")
+    logger.info(" BRONZE LAYER - DATA LAKEHOUSE")
+    logger.info(f" Mode: {source}")
     logger.info("")
     
     try:
@@ -144,7 +144,7 @@ def main():
         return 0
         
     except Exception as e:
-        logger.error(f"❌ Failed: {str(e)}")
+        logger.error(f"[ERR] Failed: {str(e)}")
         import traceback
         traceback.print_exc()
         return 1

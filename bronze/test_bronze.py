@@ -42,24 +42,24 @@ def test_bronze_output():
     
     # Check 1: File exists
     if not bronze_file.exists():
-        logger.error(f"❌ FAILED: No bronze file found in {BRONZE_DIR}")
+        logger.error(f"[ERR] FAILED: No bronze file found in {BRONZE_DIR}")
         logger.error("  Expected: prices.parquet or all_stock_data.parquet")
         return False
-    logger.info(f"✓ File exists: {bronze_file}")
+    logger.info(f"[OK] File exists: {bronze_file}")
     
     # Load data
     try:
         df = pd.read_parquet(bronze_file)
-        logger.info(f"✓ Successfully loaded data")
+        logger.info(f"[OK] Successfully loaded data")
     except Exception as e:
-        logger.error(f"❌ FAILED: Could not load file - {str(e)}")
+        logger.error(f"[ERR] FAILED: Could not load file - {str(e)}")
         return False
     
     # Check 2: Not empty
     if len(df) == 0:
-        logger.error("❌ FAILED: DataFrame is empty")
+        logger.error("[ERR] FAILED: DataFrame is empty")
         return False
-    logger.info(f"✓ Data loaded: {len(df):,} rows")
+    logger.info(f"[OK] Data loaded: {len(df):,} rows")
     
     # Standardize column names for validation (handle both PascalCase and lowercase)
     column_mapping = {
@@ -77,10 +77,10 @@ def test_bronze_output():
     missing_cols = [c for c in required_columns if c not in actual_columns_lower]
     
     if missing_cols:
-        logger.error(f"❌ FAILED: Missing columns - {missing_cols}")
+        logger.error(f"[ERR] FAILED: Missing columns - {missing_cols}")
         logger.info(f"  Available columns: {df.columns.tolist()}")
         return False
-    logger.info(f"✓ All required columns present: {df.columns.tolist()}")
+    logger.info(f"[OK] All required columns present: {df.columns.tolist()}")
     
     # Get actual column name (works with both PascalCase and lowercase)
     def get_col(name):
@@ -91,11 +91,11 @@ def test_bronze_output():
         return name
     
     # Check data types (skip detailed check, just verify basic structure)
-    logger.info("✓ Data types check (flexible for PascalCase/lowercase)")
+    logger.info("[OK] Data types check (flexible for PascalCase/lowercase)")
     for col in ['date', 'ticker', 'open', 'high', 'low', 'close', 'volume']:
         actual_col = get_col(col)
         if actual_col in df.columns:
-            logger.info(f"  ✓ {actual_col}: {df[actual_col].dtype}")
+            logger.info(f"  [OK] {actual_col}: {df[actual_col].dtype}")
     
     # Check 4: Data quality metrics
     logger.info("\n--- Data Quality Metrics ---")
@@ -103,20 +103,20 @@ def test_bronze_output():
     # Unique tickers
     ticker_col = get_col('ticker')
     n_tickers = df[ticker_col].nunique()
-    logger.info(f"✓ Unique tickers: {n_tickers:,}")
+    logger.info(f"[OK] Unique tickers: {n_tickers:,}")
     
     # Date range
     date_col = get_col('date')
     min_date = df[date_col].min()
     max_date = df[date_col].max()
-    logger.info(f"✓ Date range: {min_date} to {max_date}")
+    logger.info(f"[OK] Date range: {min_date} to {max_date}")
     
     # Null counts
     logger.info("\n  Null counts by column:")
     null_counts = df.isnull().sum()
     for col in df.columns:
         null_pct = (null_counts[col] / len(df)) * 100
-        status = "✓" if null_counts[col] == 0 else "⚠️"
+        status = "[OK]" if null_counts[col] == 0 else "[WARN]"
         logger.info(f"    {status} {col}: {null_counts[col]:,} ({null_pct:.2f}%)")
     
     # Critical columns should have no nulls (or very few that will be cleaned in Silver)
@@ -128,12 +128,12 @@ def test_bronze_output():
         for col, count in critical_nulls.items():
             pct = (count / len(df)) * 100
             if pct > 0.01:  # More than 0.01% is a problem
-                logger.error(f"❌ FAILED: Too many nulls in {col}: {count:,} ({pct:.4f}%)")
+                logger.error(f"[ERR] FAILED: Too many nulls in {col}: {count:,} ({pct:.4f}%)")
                 return False
             else:
-                logger.warning(f"⚠️  Minor nulls in {col}: {count:,} ({pct:.4f}%) - will be cleaned in Silver layer")
+                logger.warning(f"[WARN]  Minor nulls in {col}: {count:,} ({pct:.4f}%) - will be cleaned in Silver layer")
     else:
-        logger.info(f"✓ No nulls in critical columns: {critical_cols_actual}")
+        logger.info(f"[OK] No nulls in critical columns: {critical_cols_actual}")
     
     # Sample data check
     logger.info("\n--- Sample Data (First 5 rows) ---")
@@ -147,14 +147,14 @@ def test_bronze_output():
     
     # Memory usage
     memory_mb = df.memory_usage(deep=True).sum() / 1024**2
-    logger.info(f"\n✓ Memory usage: {memory_mb:.2f} MB")
+    logger.info(f"\n[OK] Memory usage: {memory_mb:.2f} MB")
     
     # File size
     file_size_mb = bronze_file.stat().st_size / 1024**2
-    logger.info(f"✓ File size: {file_size_mb:.2f} MB")
+    logger.info(f"[OK] File size: {file_size_mb:.2f} MB")
     
     logger.info("\n" + "=" * 70)
-    logger.info("✓✓✓ ALL TESTS PASSED ✓✓✓")
+    logger.info(" ALL TESTS PASSED ")
     logger.info("=" * 70)
     
     return True
@@ -188,28 +188,28 @@ def test_data_integrity():
     # Check 1: High >= Low
     invalid_highs = df[df[high_col] < df[low_col]]
     if len(invalid_highs) > 0:
-        logger.warning(f"⚠️  {len(invalid_highs)} rows where high < low")
+        logger.warning(f"[WARN]  {len(invalid_highs)} rows where high < low")
         logger.warning("  (Will be cleaned in Silver layer)")
     else:
-        logger.info("✓ All rows: high >= low")
+        logger.info("[OK] All rows: high >= low")
     
     # Check 2: Prices > 0
     zero_prices = df[(df[close_col] <= 0) | (df[open_col] <= 0)]
     if len(zero_prices) > 0:
-        logger.warning(f"⚠️  {len(zero_prices)} rows with zero/negative prices")
+        logger.warning(f"[WARN]  {len(zero_prices)} rows with zero/negative prices")
         logger.warning("  (Will be cleaned in Silver layer)")
     else:
-        logger.info("✓ All prices > 0")
+        logger.info("[OK] All prices > 0")
     
     # Check 3: Volume >= 0
     negative_volume = df[df[volume_col] < 0]
     if len(negative_volume) > 0:
-        logger.error(f"❌ {len(negative_volume)} rows with negative volume")
+        logger.error(f"[ERR] {len(negative_volume)} rows with negative volume")
     else:
-        logger.info("✓ All volumes >= 0")
+        logger.info("[OK] All volumes >= 0")
     
     # Check 4: Date continuity by ticker
-    logger.info("\n✓ Date continuity check (sample 5 tickers):")
+    logger.info("\n[OK] Date continuity check (sample 5 tickers):")
     sample_tickers = df[ticker_col].unique()[:5]
     for ticker in sample_tickers:
         ticker_df = df[df[ticker_col] == ticker].sort_values(date_col)
@@ -231,12 +231,12 @@ if __name__ == "__main__":
             logger.info("Next step: Run Silver Layer (python silver/clean.py)")
             exit(0)
         else:
-            logger.error("\n❌ Bronze Layer validation failed!")
+            logger.error("\n[ERR] Bronze Layer validation failed!")
             logger.error("Please check the logs and re-run bronze/ingest.py")
             exit(1)
             
     except Exception as e:
-        logger.error(f"\n❌ Test failed with error: {str(e)}")
+        logger.error(f"\n[ERR] Test failed with error: {str(e)}")
         import traceback
         traceback.print_exc()
         exit(1)

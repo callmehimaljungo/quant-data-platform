@@ -1,15 +1,8 @@
 """
 Silver Layer: Clean and enrich stock data
-Author: Quant Data Platform Team
-Date: 2024
 
-Purpose (Section 2.2 - Silver Layer):
-- Deduplicate records (keep latest for each ticker/date)
-- Quality gates: close > 0, high >= low, volume >= 0
-- Standardize column names (PascalCase → lowercase)
-- Calculate daily returns
-- Join with sector metadata (if available)
-- Output: enriched_stocks.parquet
+Handles deduplication, quality gates, daily returns calculation,
+and joining with sector metadata.
 """
 
 import sys
@@ -33,7 +26,7 @@ from config import (
 )
 
 # =============================================================================
-# LOGGING SETUP (Section 7.2)
+# LOGGING SETUP 
 # =============================================================================
 logging.basicConfig(
     level=logging.INFO,
@@ -66,17 +59,7 @@ COLUMN_MAPPING = {
 # LOAD DATA
 # =============================================================================
 def load_bronze_data() -> pd.DataFrame:
-    """
-    Load data from Bronze layer
-    
-    Handles both file names (prices.parquet or all_stock_data.parquet)
-    
-    Returns:
-        pd.DataFrame: Raw data from Bronze layer
-        
-    Raises:
-        FileNotFoundError: If no bronze file found
-    """
+    """Load data from Bronze layer."""
     if BRONZE_FILE.exists():
         bronze_path = BRONZE_FILE
     elif BRONZE_FILE_ALT.exists():
@@ -88,23 +71,13 @@ def load_bronze_data() -> pd.DataFrame:
     
     logger.info(f"Loading data from {bronze_path}")
     df = pd.read_parquet(bronze_path)
-    logger.info(f"✓ Loaded {len(df):,} rows from Bronze layer")
+    logger.info(f"[OK] Loaded {len(df):,} rows from Bronze layer")
     
     return df
 
 
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Standardize column names to lowercase
-    
-    Handles Kaggle's PascalCase format
-    
-    Args:
-        df: DataFrame with potentially mixed case columns
-        
-    Returns:
-        DataFrame with standardized lowercase column names
-    """
+    """Convert column names to lowercase."""
     # Create mapping for current columns
     rename_map = {}
     for col in df.columns:
@@ -115,28 +88,17 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
     
     if rename_map:
         df = df.rename(columns=rename_map)
-        logger.info(f"✓ Standardized column names: {list(rename_map.keys())} → {list(rename_map.values())}")
+        logger.info(f"[OK] Standardized column names: {list(rename_map.keys())} → {list(rename_map.values())}")
     else:
-        logger.info("✓ Column names already standardized")
+        logger.info("[OK] Column names already standardized")
     
     return df
 
 
-# =============================================================================
-# DATA CLEANING (Section 2.2 - Silver Transformations)
+# DATA CLEANING
 # =============================================================================
 def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Remove duplicate records
-    
-    Keeps last record for each (ticker, date) pair
-    
-    Args:
-        df: DataFrame with potential duplicates
-        
-    Returns:
-        DataFrame without duplicates
-    """
+    """Remove duplicate (ticker, date) pairs."""
     initial_rows = len(df)
     
     df = df.sort_values('date').drop_duplicates(
@@ -146,41 +108,25 @@ def deduplicate(df: pd.DataFrame) -> pd.DataFrame:
     
     removed = initial_rows - len(df)
     if removed > 0:
-        logger.info(f"✓ Removed {removed:,} duplicate rows")
+        logger.info(f"[OK] Removed {removed:,} duplicate rows")
     else:
-        logger.info("✓ No duplicates found")
+        logger.info("[OK] No duplicates found")
     
     return df
 
 
 def convert_date_column(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Ensure date column is datetime type
-    
-    Args:
-        df: DataFrame with 'date' column
-        
-    Returns:
-        DataFrame with datetime date column
-    """
+    """Ensure date column is datetime type."""
     if df['date'].dtype == 'object':
         logger.info("Converting date column to datetime...")
         df['date'] = pd.to_datetime(df['date'])
-        logger.info("✓ Date column converted to datetime")
+        logger.info("[OK] Date column converted to datetime")
     
     return df
 
 
 def remove_null_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Remove rows with null values in critical columns
-    
-    Args:
-        df: DataFrame to clean
-        
-    Returns:
-        DataFrame without null rows in critical columns
-    """
+    """Remove rows with nulls in critical columns."""
     initial_rows = len(df)
     
     critical_cols = ['date', 'ticker', 'close', 'open', 'high', 'low', 'volume']
@@ -199,74 +145,50 @@ def remove_null_rows(df: pd.DataFrame) -> pd.DataFrame:
         # Remove rows with any nulls in critical columns
         df = df.dropna(subset=existing_cols)
         removed = initial_rows - len(df)
-        logger.info(f"✓ Removed {removed:,} rows with null values")
+        logger.info(f"[OK] Removed {removed:,} rows with null values")
     else:
-        logger.info("✓ No null values in critical columns")
+        logger.info("[OK] No null values in critical columns")
     
     return df
 
 
 def apply_quality_gates(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Apply quality gates (Section 2.2)
-    
-    Rules:
-    - close > 0 (required)
-    - high >= low
-    - volume >= 0
-    - open > 0
-    
-    Args:
-        df: DataFrame to filter
-        
-    Returns:
-        DataFrame with invalid rows removed
-    """
+    """Filter invalid rows (close<=0, high<low, etc)."""
     initial_rows = len(df)
     
     # Rule 1: close > 0 (critical)
     invalid_close = df[df['close'] <= 0]
     if len(invalid_close) > 0:
-        logger.warning(f"⚠️  Removing {len(invalid_close):,} rows with close <= 0")
+        logger.warning(f"[WARN]  Removing {len(invalid_close):,} rows with close <= 0")
         df = df[df['close'] > 0]
     
     # Rule 2: high >= low
     invalid_hl = df[df['high'] < df['low']]
     if len(invalid_hl) > 0:
-        logger.warning(f"⚠️  Removing {len(invalid_hl):,} rows with high < low")
+        logger.warning(f"[WARN]  Removing {len(invalid_hl):,} rows with high < low")
         df = df[df['high'] >= df['low']]
     
     # Rule 3: volume >= 0
     invalid_vol = df[df['volume'] < 0]
     if len(invalid_vol) > 0:
-        logger.warning(f"⚠️  Removing {len(invalid_vol):,} rows with volume < 0")
+        logger.warning(f"[WARN]  Removing {len(invalid_vol):,} rows with volume < 0")
         df = df[df['volume'] >= 0]
     
     # Rule 4: open > 0
     invalid_open = df[df['open'] <= 0]
     if len(invalid_open) > 0:
-        logger.warning(f"⚠️  Removing {len(invalid_open):,} rows with open <= 0")
+        logger.warning(f"[WARN]  Removing {len(invalid_open):,} rows with open <= 0")
         df = df[df['open'] > 0]
     
     removed = initial_rows - len(df)
-    logger.info(f"✓ Quality gates: removed {removed:,} invalid rows total")
-    logger.info(f"✓ Remaining rows: {len(df):,}")
+    logger.info(f"[OK] Quality gates: removed {removed:,} invalid rows total")
+    logger.info(f"[OK] Remaining rows: {len(df):,}")
     
     return df
 
 
 def calculate_daily_return(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate daily return for each ticker
-    
-    daily_return = (close - prev_close) / prev_close * 100
-    
-    Args:
-        df: DataFrame with 'ticker', 'date', 'close'
-        
-    Returns:
-        DataFrame with 'daily_return' column added
-    """
+    """Calculate daily pct_change for each ticker."""
     # Sort by ticker and date
     df = df.sort_values(['ticker', 'date'])
     
@@ -276,7 +198,7 @@ def calculate_daily_return(df: pd.DataFrame) -> pd.DataFrame:
     # Fill NaN for first day of each ticker with 0
     df['daily_return'] = df['daily_return'].fillna(0)
     
-    logger.info(f"✓ Calculated daily returns for {df['ticker'].nunique():,} tickers")
+    logger.info(f"[OK] Calculated daily returns for {df['ticker'].nunique():,} tickers")
     logger.info(f"  Mean return: {df['daily_return'].mean():.4f}%")
     logger.info(f"  Std return: {df['daily_return'].std():.4f}%")
     
@@ -284,15 +206,7 @@ def calculate_daily_return(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_sector_info(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add sector information from metadata (if available)
-    
-    Args:
-        df: DataFrame with 'ticker' column
-        
-    Returns:
-        DataFrame with 'sector' column (or 'Unknown' if no metadata)
-    """
+    """Add sector from metadata if available."""
     metadata_file = METADATA_DIR / 'ticker_metadata.parquet'
     
     if metadata_file.exists():
@@ -307,13 +221,13 @@ def add_sector_info(df: pd.DataFrame) -> pd.DataFrame:
             )
             df['sector'] = df['sector'].fillna('Unknown')
             df['industry'] = df['industry'].fillna('Unknown')
-            logger.info(f"✓ Added sector info for {df['sector'].nunique()} unique sectors")
+            logger.info(f"[OK] Added sector info for {df['sector'].nunique()} unique sectors")
         else:
-            logger.warning("⚠️  Metadata file missing 'ticker' or 'sector' columns")
+            logger.warning("[WARN]  Metadata file missing 'ticker' or 'sector' columns")
             df['sector'] = 'Unknown'
             df['industry'] = 'Unknown'
     else:
-        logger.info("ℹ️  No metadata file found, sector will be 'Unknown'")
+        logger.info("No metadata file found, sector will be 'Unknown'")
         df['sector'] = 'Unknown'
         df['industry'] = 'Unknown'
     
@@ -321,45 +235,17 @@ def add_sector_info(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_enrichment_metadata(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add enrichment metadata
-    
-    Args:
-        df: DataFrame to enrich
-        
-    Returns:
-        DataFrame with metadata columns
-    """
+    """Add enriched_at timestamp."""
     df['enriched_at'] = datetime.now()
     df['data_version'] = 'silver_v1'
     
-    logger.info(f"✓ Added enrichment metadata")
+    logger.info(f"[OK] Added enrichment metadata")
     
     return df
 
 
 def add_quality_flags(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add quality flag columns instead of deleting data
-    
-    Flags (boolean columns):
-    - is_penny_stock: close < $1 (high noise, potential delisting)
-    - has_outlier_return: |daily_return| > 50% (potential stock split or error)
-    - low_liquidity: volume < 10,000 (hard to trade)
-    - insufficient_history: ticker has < 252 trading days (< 1 year)
-    
-    Usage:
-        # Get high-quality subset
-        df_quality = df[~df['is_penny_stock'] & ~df['low_liquidity']]
-        
-    NOTE: Rows are NOT deleted - use flags to filter as needed
-    
-    Args:
-        df: DataFrame with price data
-        
-    Returns:
-        DataFrame with quality flag columns added
-    """
+    """Add boolean flags for data quality issues."""
     logger.info("Adding quality flags (preserving all data)...")
     
     # Flag 1: Penny stocks (close < $1)
@@ -393,7 +279,7 @@ def add_quality_flags(df: pd.DataFrame) -> pd.DataFrame:
         ~df['insufficient_history']
     )
     high_quality_count = high_quality_mask.sum()
-    logger.info(f"  ✓ High-quality rows (no flags): {high_quality_count:,} ({high_quality_count/len(df)*100:.1f}%)")
+    logger.info(f"  [OK] High-quality rows (no flags): {high_quality_count:,} ({high_quality_count/len(df)*100:.1f}%)")
     
     return df
 
@@ -402,21 +288,7 @@ def add_quality_flags(df: pd.DataFrame) -> pd.DataFrame:
 # MAIN CLEANING FUNCTION
 # =============================================================================
 def clean_silver_data() -> pd.DataFrame:
-    """
-    Main Silver layer cleaning pipeline
-    
-    Steps:
-    1. Load from Bronze
-    2. Standardize column names
-    3. Deduplicate
-    4. Apply quality gates
-    5. Calculate daily returns
-    6. Add sector info
-    7. Add metadata
-    
-    Returns:
-        pd.DataFrame: Cleaned and enriched data
-    """
+    """Main Silver cleaning pipeline."""
     start_time = datetime.now()
     
     logger.info("=" * 70)
@@ -458,7 +330,7 @@ def clean_silver_data() -> pd.DataFrame:
         duration = (datetime.now() - start_time).total_seconds()
         
         logger.info("=" * 70)
-        logger.info("✓✓✓ SILVER LAYER PROCESSING COMPLETED ✓✓✓")
+        logger.info(" SILVER LAYER PROCESSING COMPLETED ")
         logger.info(f"Duration: {duration:.2f} seconds")
         logger.info(f"Total rows: {len(df):,}")
         logger.info(f"Unique tickers: {df['ticker'].nunique():,}")
@@ -471,20 +343,14 @@ def clean_silver_data() -> pd.DataFrame:
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
         logger.error("=" * 70)
-        logger.error(f"❌ SILVER LAYER PROCESSING FAILED after {duration:.2f} seconds")
+        logger.error(f"[ERR] SILVER LAYER PROCESSING FAILED after {duration:.2f} seconds")
         logger.error(f"Error: {str(e)}")
         logger.error("=" * 70)
         raise
 
 
 def save_to_silver(df: pd.DataFrame, output_path: Path = OUTPUT_PATH) -> None:
-    """
-    Save DataFrame to Silver layer
-    
-    Args:
-        df: DataFrame to save
-        output_path: Output file path
-    """
+    """Save DataFrame to Silver layer."""
     try:
         # Create directory if needed
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -499,8 +365,8 @@ def save_to_silver(df: pd.DataFrame, output_path: Path = OUTPUT_PATH) -> None:
         )
         
         file_size = output_path.stat().st_size / 1024**2
-        logger.info(f"✓ Data saved to {output_path}")
-        logger.info(f"✓ File size: {file_size:.2f} MB")
+        logger.info(f"[OK] Data saved to {output_path}")
+        logger.info(f"[OK] File size: {file_size:.2f} MB")
         
     except Exception as e:
         logger.error(f"Failed to save data: {str(e)}")
@@ -511,14 +377,9 @@ def save_to_silver(df: pd.DataFrame, output_path: Path = OUTPUT_PATH) -> None:
 # MAIN EXECUTION
 # =============================================================================
 def main():
-    """
-    Main execution function for Silver layer
-    
-    Usage:
-        python silver/clean.py
-    """
+    """CLI entry point."""
     logger.info("")
-    logger.info("🚀 SILVER LAYER PROCESSING")
+    logger.info(" SILVER LAYER PROCESSING")
     logger.info("")
     
     try:
@@ -529,15 +390,15 @@ def main():
         save_to_silver(df)
         
         logger.info("")
-        logger.info("✅ Silver layer processing completed successfully!")
-        logger.info(f"✅ Output: {OUTPUT_PATH}")
+        logger.info("[OK] Silver layer processing completed successfully!")
+        logger.info(f"[OK] Output: {OUTPUT_PATH}")
         logger.info("")
         logger.info("Next step: Run Gold Layer (python gold/sector_analysis.py)")
         return 0
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ Silver layer processing failed: {str(e)}")
+        logger.error(f"[ERR] Silver layer processing failed: {str(e)}")
         logger.error("")
         import traceback
         traceback.print_exc()

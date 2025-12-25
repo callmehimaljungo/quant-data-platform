@@ -347,9 +347,9 @@ def load_market_news(
         df = df.drop(columns=['tickers_list'])
     
     # Log summary
-    logger.info(f"\n✓ Loaded {len(df):,} news articles")
-    logger.info(f"✓ Date range: {df['published_at'].min()} to {df['published_at'].max()}")
-    logger.info(f"✓ Sources: {df['source'].nunique()} unique")
+    logger.info(f"\n[OK] Loaded {len(df):,} news articles")
+    logger.info(f"[OK] Date range: {df['published_at'].min()} to {df['published_at'].max()}")
+    logger.info(f"[OK] Sources: {df['source'].nunique()} unique")
     
     # Sentiment distribution
     if df['sentiment_label'].notna().any():
@@ -373,7 +373,7 @@ def load_market_news(
                 f.write(f"\n{'='*50}\n\n")
                 f.write(row['content'] if row['content'] else row['summary'])
         
-        logger.info(f"✓ Saved {len(df)} text files to {TEXT_DIR}")
+        logger.info(f"[OK] Saved {len(df)} text files to {TEXT_DIR}")
     
     # Save raw JSON
     RAW_JSON_DIR.mkdir(parents=True, exist_ok=True)
@@ -382,7 +382,7 @@ def load_market_news(
     with open(json_file, 'w') as f:
         json.dump(df.to_dict(orient='records'), f, indent=2, default=str)
     
-    logger.info(f"✓ Saved raw JSON to {json_file}")
+    logger.info(f"[OK] Saved raw JSON to {json_file}")
     
     duration = (datetime.now() - start_time).total_seconds()
     logger.info("=" * 70)
@@ -400,7 +400,7 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
     logger.info(f"Saving to Lakehouse: {OUTPUT_DIR}")
     path = pandas_to_lakehouse(df, OUTPUT_DIR, mode="overwrite")
     
-    logger.info(f"✓ Saved to {path}")
+    logger.info(f"[OK] Saved to {path}")
     return path
 
 
@@ -422,7 +422,7 @@ def register_in_universe(df: pd.DataFrame):
     
     if all_tickers:
         universe.register_source('news', list(all_tickers))
-        logger.info(f"✓ Registered {len(all_tickers):,} tickers in universe")
+        logger.info(f"[OK] Registered {len(all_tickers):,} tickers in universe")
 
 
 # =============================================================================
@@ -430,9 +430,9 @@ def register_in_universe(df: pd.DataFrame):
 # =============================================================================
 
 def main(num_articles: int = 500, test: bool = False):
-    """Main execution function"""
+    """CLI entry point."""
     logger.info("")
-    logger.info("🚀 BRONZE LAYER: MARKET NEWS LOADER")
+    logger.info(" BRONZE LAYER: MARKET NEWS LOADER")
     logger.info("")
     
     try:
@@ -458,7 +458,7 @@ def main(num_articles: int = 500, test: bool = False):
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ News loading failed: {str(e)}")
+        logger.error(f"[ERR] News loading failed: {str(e)}")
         import traceback
         traceback.print_exc()
         logger.error("")

@@ -34,7 +34,7 @@ from config import GOLD_DIR, SILVER_DIR, GICS_SECTORS
 # =============================================================================
 st.set_page_config(
     page_title="Quant Data Platform",
-    page_icon="📊",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -112,12 +112,12 @@ def create_sample_sector_metrics() -> pd.DataFrame:
 # =============================================================================
 def render_sidebar():
     """Render sidebar navigation"""
-    st.sidebar.title("📊 Quant Data Platform")
+    st.sidebar.title(" Quant Data Platform")
     st.sidebar.markdown("---")
     
     page = st.sidebar.radio(
         "Navigation",
-        ["🏠 Overview", "📈 Risk Metrics", "🏢 Sector Analysis", "🤖 Model Results", "⚙️ Settings"]
+        ["🏠 Overview", " Risk Metrics", "🏢 Sector Analysis", "🤖 Model Results", "⚙️ Settings"]
     )
     
     st.sidebar.markdown("---")
@@ -125,10 +125,10 @@ def render_sidebar():
     
     # Check data availability - check multiple possible paths
     risk_data_exists = (GOLD_DIR / 'ticker_metrics_lakehouse').exists() or (GOLD_DIR / 'risk_metrics_lakehouse').exists()
-    st.sidebar.markdown(f"Risk Metrics: {'✅ Real Data' if risk_data_exists else '⚠️ Sample'}")
+    st.sidebar.markdown(f"Risk Metrics: {'✅ Real Data' if risk_data_exists else '[WARN] Sample'}")
     
     sector_data_exists = (GOLD_DIR / 'sector_metrics_lakehouse').exists() or (GOLD_DIR / 'sector_risk_metrics_lakehouse').exists()
-    st.sidebar.markdown(f"Sector Metrics: {'✅ Real Data' if sector_data_exists else '⚠️ Sample'}")
+    st.sidebar.markdown(f"Sector Metrics: {'✅ Real Data' if sector_data_exists else '[WARN] Sample'}")
     
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"*Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*")
@@ -187,7 +187,7 @@ def render_overview():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📊 Sharpe Ratio Distribution")
+        st.subheader(" Sharpe Ratio Distribution")
         fig = px.histogram(
             risk_df, 
             x='sharpe_ratio',
@@ -198,7 +198,7 @@ def render_overview():
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        st.subheader("📊 Sector Performance")
+        st.subheader(" Sector Performance")
         fig = px.bar(
             sector_df.sort_values('sharpe_ratio', ascending=True),
             x='sharpe_ratio',
@@ -223,7 +223,7 @@ def render_overview():
 # =============================================================================
 def render_risk_metrics():
     """Render risk metrics page"""
-    st.title("📈 Risk Metrics Dashboard")
+    st.title(" Risk Metrics Dashboard")
     
     risk_df = load_risk_metrics()
     
@@ -251,7 +251,7 @@ def render_risk_metrics():
     st.markdown(f"*Showing {len(filtered_df):,} tickers*")
     
     # Risk-Return Scatter
-    st.subheader("📈 Risk-Return Profile")
+    st.subheader(" Risk-Return Profile")
     fig = px.scatter(
         filtered_df,
         x='volatility',
@@ -270,7 +270,7 @@ def render_risk_metrics():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📊 Volatility Distribution")
+        st.subheader(" Volatility Distribution")
         fig = px.histogram(
             filtered_df,
             x='volatility',
@@ -280,7 +280,7 @@ def render_risk_metrics():
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        st.subheader("📊 Max Drawdown Distribution")
+        st.subheader(" Max Drawdown Distribution")
         fig = px.histogram(
             filtered_df,
             x='max_drawdown',
@@ -308,7 +308,7 @@ def render_sector_analysis():
     sector_df = load_sector_metrics()
     
     # Sector comparison
-    st.subheader("📊 Sector Comparison")
+    st.subheader(" Sector Comparison")
     
     metrics = ['sharpe_ratio', 'volatility', 'max_drawdown', 'num_tickers']
     selected_metric = st.selectbox(
@@ -333,7 +333,7 @@ def render_sector_analysis():
     st.plotly_chart(fig, use_container_width=True)
     
     # Sector drill-down
-    st.subheader("🔍 Sector Drill-Down")
+    st.subheader(" Sector Drill-Down")
     selected_sector = st.selectbox("Select Sector", sorted(risk_df['sector'].unique()))
     
     sector_stocks = risk_df[risk_df['sector'] == selected_sector]
@@ -480,7 +480,7 @@ def render_model_results():
     strategy_names = list(strategies.keys())
     
     # Performance Summary
-    st.subheader("📊 Strategy Performance Summary")
+    st.subheader(" Strategy Performance Summary")
     
     # Create performance metrics table
     perf_data = {
@@ -500,7 +500,7 @@ def render_model_results():
     st.markdown("---")
     
     # Cumulative Returns Chart
-    st.subheader("📈 Cumulative Returns (Backtest)")
+    st.subheader(" Cumulative Returns (Backtest)")
     
     backtest_df = create_sample_backtest_results()
     
@@ -597,7 +597,7 @@ def render_model_results():
     st.markdown("---")
     
     # Run Backtest Button
-    st.subheader("🚀 Run New Backtest")
+    st.subheader(" Run New Backtest")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -624,7 +624,7 @@ def main():
     
     if page == "🏠 Overview":
         render_overview()
-    elif page == "📈 Risk Metrics":
+    elif page == " Risk Metrics":
         render_risk_metrics()
     elif page == "🏢 Sector Analysis":
         render_sector_analysis()

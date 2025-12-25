@@ -55,7 +55,7 @@ try:
     PDR_AVAILABLE = True
 except ImportError:
     PDR_AVAILABLE = False
-    logger.warning("⚠️ pandas_datareader not installed. Install with: pip install pandas-datareader")
+    logger.warning("[WARN] pandas_datareader not installed. Install with: pip install pandas-datareader")
 
 
 # =============================================================================
@@ -309,7 +309,7 @@ def fetch_from_fred(
                     'frequency': FRED_SERIES.get(series_id, {}).get('frequency', 'unknown')
                 })
             
-            logger.info(f"✓ Fetched {len(df)} data points for {series_id}")
+            logger.info(f"[OK] Fetched {len(df)} data points for {series_id}")
             
         except Exception as e:
             logger.warning(f"Failed to fetch {series_id}: {e}")
@@ -361,9 +361,9 @@ def load_economic_data(
     df['fetched_at'] = datetime.now()
     
     # Log summary
-    logger.info(f"\n✓ Loaded {len(df):,} data points")
-    logger.info(f"✓ Indicators: {df['indicator_id'].nunique()}")
-    logger.info(f"✓ Date range: {df['date'].min()} to {df['date'].max()}")
+    logger.info(f"\n[OK] Loaded {len(df):,} data points")
+    logger.info(f"[OK] Indicators: {df['indicator_id'].nunique()}")
+    logger.info(f"[OK] Date range: {df['date'].min()} to {df['date'].max()}")
     
     # Indicator distribution
     logger.info("\nIndicator Distribution:")
@@ -378,7 +378,7 @@ def load_economic_data(
         indicator_df = df[df['indicator_id'] == indicator_id]
         csv_file = RAW_CSV_DIR / f'{indicator_id}_{datetime.now().strftime("%Y%m%d")}.csv'
         indicator_df.to_csv(csv_file, index=False)
-        logger.info(f"✓ Saved CSV: {csv_file}")
+        logger.info(f"[OK] Saved CSV: {csv_file}")
     
     duration = (datetime.now() - start_time).total_seconds()
     logger.info("=" * 70)
@@ -396,7 +396,7 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
     logger.info(f"Saving to Lakehouse: {OUTPUT_DIR}")
     path = pandas_to_lakehouse(df, OUTPUT_DIR, mode="overwrite")
     
-    logger.info(f"✓ Saved to {path}")
+    logger.info(f"[OK] Saved to {path}")
     return path
 
 
@@ -405,9 +405,9 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
 # =============================================================================
 
 def main(start_date: str = '2020-01-01', test: bool = False):
-    """Main execution function"""
+    """CLI entry point."""
     logger.info("")
-    logger.info("🚀 BRONZE LAYER: ECONOMIC INDICATORS LOADER")
+    logger.info(" BRONZE LAYER: ECONOMIC INDICATORS LOADER")
     logger.info("")
     
     try:
@@ -430,7 +430,7 @@ def main(start_date: str = '2020-01-01', test: bool = False):
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ Economic data loading failed: {str(e)}")
+        logger.error(f"[ERR] Economic data loading failed: {str(e)}")
         import traceback
         traceback.print_exc()
         logger.error("")

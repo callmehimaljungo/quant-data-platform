@@ -1,16 +1,8 @@
 """
-Gold Layer: Per-Ticker Risk Metrics (Optimized Version)
-Calculate individual stock risk metrics for portfolio construction
+Gold Layer: Per-Ticker Risk Metrics
 
-Purpose:
-- Calculate VaR, Sharpe, Sortino, Max Drawdown, Volatility for each ticker
-- Calculate Beta and Alpha vs SPY benchmark
-- Aggregate metrics by sector for sector-level analysis
-
-Output: data/gold/risk_metrics_lakehouse/
-
-Usage:
-    python gold/risk_metrics.py
+Calculates VaR, Sharpe, Sortino, Max Drawdown, Beta, Alpha 
+for each ticker and aggregates by sector.
 """
 
 import sys
@@ -111,13 +103,13 @@ def get_spy_returns(df: pd.DataFrame) -> Tuple[pd.Series, bool]:
     spy_df = df[df['ticker'] == BENCHMARK_TICKER].copy()
     
     if len(spy_df) == 0:
-        logger.warning(f"⚠️ {BENCHMARK_TICKER} not found. Beta/Alpha will be NaN.")
+        logger.warning(f"[WARN] {BENCHMARK_TICKER} not found. Beta/Alpha will be NaN.")
         return pd.Series(dtype=float), False
     
     spy_df = spy_df.sort_values('date').set_index('date')
     spy_returns = spy_df['daily_return'] / 100  # Convert to decimal
     
-    logger.info(f"✓ Loaded {BENCHMARK_TICKER}: {len(spy_returns):,} days")
+    logger.info(f"[OK] Loaded {BENCHMARK_TICKER}: {len(spy_returns):,} days")
     return spy_returns, True
 
 
@@ -282,7 +274,7 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
     # Filter out tickers with insufficient data
     basic = basic[basic['num_records'] >= 30]
     
-    logger.info(f"✓ Calculated metrics for {len(basic):,} tickers")
+    logger.info(f"[OK] Calculated metrics for {len(basic):,} tickers")
     
     return basic
 
@@ -314,7 +306,7 @@ def calculate_sector_risk_metrics(ticker_metrics: pd.DataFrame) -> pd.DataFrame:
     sector_agg['avg_max_drawdown_pct'] = sector_agg['avg_max_drawdown'] * 100
     sector_agg = sector_agg.sort_values('avg_sharpe', ascending=False)
     
-    logger.info(f"✓ Aggregated metrics for {len(sector_agg)} sectors")
+    logger.info(f"[OK] Aggregated metrics for {len(sector_agg)} sectors")
     return sector_agg
 
 
@@ -333,7 +325,7 @@ def run_risk_analysis() -> Dict[str, pd.DataFrame]:
     
     # 1. Load Silver data
     df = load_silver_data()
-    logger.info(f"✓ Loaded {len(df):,} rows")
+    logger.info(f"[OK] Loaded {len(df):,} rows")
     logger.info(f"  Tickers: {df['ticker'].nunique():,}")
     
     # 2. Get SPY benchmark
@@ -353,7 +345,7 @@ def run_risk_analysis() -> Dict[str, pd.DataFrame]:
     duration = (datetime.now() - start_time).total_seconds()
     
     logger.info("=" * 70)
-    logger.info("✓✓✓ RISK METRICS COMPLETED ✓✓✓")
+    logger.info(" RISK METRICS COMPLETED ")
     logger.info(f"Duration: {duration:.1f} seconds")
     logger.info(f"Output: {len(ticker_metrics):,} tickers, {len(sector_metrics)} sectors")
     logger.info("=" * 70)
@@ -374,7 +366,7 @@ def main() -> int:
         logger.info("\n✅ Done! Next: python gold/portfolio.py")
         return 0
     except Exception as e:
-        logger.error(f"❌ Failed: {e}")
+        logger.error(f"[ERR] Failed: {e}")
         import traceback
         traceback.print_exc()
         return 1

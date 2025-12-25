@@ -193,7 +193,7 @@ def load_bronze_news() -> pd.DataFrame:
         else:
             raise FileNotFoundError(f"No Bronze news found")
     
-    logger.info(f"✓ Loaded {len(df):,} news articles from Bronze")
+    logger.info(f"[OK] Loaded {len(df):,} news articles from Bronze")
     return df
 
 
@@ -212,7 +212,7 @@ def load_text_files() -> Dict[str, str]:
         except Exception as e:
             logger.warning(f"Failed to read {txt_file}: {e}")
     
-    logger.info(f"✓ Loaded {len(texts)} text files")
+    logger.info(f"[OK] Loaded {len(texts)} text files")
     return texts
 
 
@@ -230,7 +230,7 @@ def get_valid_tickers() -> Set[str]:
             df = pd.read_parquet(prices_file, columns=['Ticker'])
             tickers = set(df['Ticker'].unique())
     
-    logger.info(f"✓ Loaded {len(tickers):,} valid tickers from universe")
+    logger.info(f"[OK] Loaded {len(tickers):,} valid tickers from universe")
     return tickers
 
 
@@ -281,7 +281,7 @@ def process_news(df: pd.DataFrame, valid_tickers: Set[str]) -> pd.DataFrame:
     else:
         df['sentiment_category'] = 'neutral'
     
-    logger.info(f"✓ Processed {len(df):,} articles")
+    logger.info(f"[OK] Processed {len(df):,} articles")
     logger.info(f"  - With valid tickers: {df['has_valid_tickers'].sum():,}")
     
     return df
@@ -348,7 +348,7 @@ def aggregate_by_ticker_date(
     # Add metadata
     agg_df['processed_at'] = datetime.now()
     
-    logger.info(f"✓ Created {len(agg_df):,} ticker-date combinations")
+    logger.info(f"[OK] Created {len(agg_df):,} ticker-date combinations")
     logger.info(f"  - Unique tickers: {agg_df['ticker'].nunique():,}")
     logger.info(f"  - Date range: {agg_df['date'].min()} to {agg_df['date'].max()}")
     
@@ -402,7 +402,7 @@ def save_to_lakehouse(agg_df: pd.DataFrame) -> str:
     logger.info(f"Saving to Lakehouse: {OUTPUT_DIR}")
     path = pandas_to_lakehouse(agg_df, OUTPUT_DIR, mode="overwrite")
     
-    logger.info(f"✓ Saved to {path}")
+    logger.info(f"[OK] Saved to {path}")
     return path
 
 
@@ -414,7 +414,7 @@ def register_in_universe(agg_df: pd.DataFrame):
         universe = get_universe()
         tickers = agg_df['ticker'].unique().tolist()
         universe.register_source('silver_news', tickers)
-        logger.info(f"✓ Registered {len(tickers):,} tickers with news coverage")
+        logger.info(f"[OK] Registered {len(tickers):,} tickers with news coverage")
 
 
 # =============================================================================
@@ -422,9 +422,9 @@ def register_in_universe(agg_df: pd.DataFrame):
 # =============================================================================
 
 def main():
-    """Main execution function"""
+    """CLI entry point."""
     logger.info("")
-    logger.info("🚀 SILVER LAYER: NEWS PROCESSOR")
+    logger.info(" SILVER LAYER: NEWS PROCESSOR")
     logger.info("")
     
     try:
@@ -438,7 +438,7 @@ def main():
             # Register in universe
             register_in_universe(agg_df)
         else:
-            logger.warning("⚠️ No aggregated news to save")
+            logger.warning("[WARN] No aggregated news to save")
         
         logger.info("")
         logger.info("✅ News processing completed!")
@@ -447,13 +447,13 @@ def main():
         return 0
         
     except FileNotFoundError as e:
-        logger.warning(f"⚠️ Bronze news not found: {e}")
-        logger.warning("⚠️ Run bronze/news_loader.py first")
+        logger.warning(f"[WARN] Bronze news not found: {e}")
+        logger.warning("[WARN] Run bronze/news_loader.py first")
         return 1
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ Processing failed: {str(e)}")
+        logger.error(f"[ERR] Processing failed: {str(e)}")
         import traceback
         traceback.print_exc()
         logger.error("")

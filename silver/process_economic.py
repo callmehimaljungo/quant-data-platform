@@ -97,7 +97,7 @@ def load_bronze_economic() -> pd.DataFrame:
     # Remove duplicates
     combined = combined.drop_duplicates(subset=['date', 'indicator_id'], keep='last')
     
-    logger.info(f"✓ Loaded {len(combined):,} economic data points from Bronze")
+    logger.info(f"[OK] Loaded {len(combined):,} economic data points from Bronze")
     return combined
 
 
@@ -145,7 +145,7 @@ def pivot_to_wide_format(df: pd.DataFrame) -> pd.DataFrame:
     # Sort by date
     wide_df = wide_df.sort_values('date').reset_index(drop=True)
     
-    logger.info(f"✓ Pivoted to {len(wide_df):,} rows × {len(wide_df.columns)} columns")
+    logger.info(f"[OK] Pivoted to {len(wide_df):,} rows × {len(wide_df.columns)} columns")
     
     return wide_df
 
@@ -171,7 +171,7 @@ def resample_to_daily(df: pd.DataFrame) -> pd.DataFrame:
     df = df.reindex(date_range)
     df.index.name = 'date'
     
-    logger.info(f"✓ Expanded to {len(df):,} daily rows")
+    logger.info(f"[OK] Expanded to {len(df):,} daily rows")
     
     return df.reset_index()
 
@@ -241,12 +241,12 @@ def apply_publication_lags(df: pd.DataFrame) -> pd.DataFrame:
                 # Create realtime column (shifted by lag)
                 realtime_col = f"{col_name}_realtime"
                 df[realtime_col] = df[col_name].shift(lag_days)
-                logger.info(f"  ✓ {col_name} → {realtime_col} (lag: {lag_days} days)")
+                logger.info(f"  [OK] {col_name} → {realtime_col} (lag: {lag_days} days)")
             else:
                 # VIX is real-time, no lag needed
                 df[f"{col_name}_realtime"] = df[col_name]
     
-    logger.info("  ⚠️  Use *_realtime columns for backtest to avoid look-ahead bias!")
+    logger.info("  [WARN]  Use *_realtime columns for backtest to avoid look-ahead bias!")
     
     return df
 
@@ -260,14 +260,14 @@ def calculate_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # Yield curve slope (10Y - Fed Funds)
     if 'treasury_10y' in df.columns and 'fed_funds_rate' in df.columns:
         df['yield_curve_slope'] = df['treasury_10y'] - df['fed_funds_rate']
-        logger.info("  ✓ yield_curve_slope = 10Y Treasury - Fed Funds")
+        logger.info("  [OK] yield_curve_slope = 10Y Treasury - Fed Funds")
     
     # Real rate (10Y - CPI)
     if 'treasury_10y' in df.columns and 'cpi' in df.columns:
         # CPI needs to be converted to YoY % change first
         df['cpi_yoy'] = df['cpi'].pct_change(252) * 100  # Approximate annual
         df['real_rate'] = df['treasury_10y'] - df['cpi_yoy']
-        logger.info("  ✓ real_rate = 10Y Treasury - CPI YoY")
+        logger.info("  [OK] real_rate = 10Y Treasury - CPI YoY")
     
     # VIX regime
     if 'vix' in df.columns:
@@ -276,7 +276,7 @@ def calculate_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
             bins=[0, 15, 20, 30, 100],
             labels=['low_vol', 'normal', 'elevated', 'high_vol']
         )
-        logger.info("  ✓ vix_regime: low_vol/normal/elevated/high_vol")
+        logger.info("  [OK] vix_regime: low_vol/normal/elevated/high_vol")
     
     return df
 
@@ -405,7 +405,7 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
     logger.info(f"Saving to Lakehouse: {OUTPUT_DIR}")
     path = pandas_to_lakehouse(df, OUTPUT_DIR, mode="overwrite")
     
-    logger.info(f"✓ Saved to {path}")
+    logger.info(f"[OK] Saved to {path}")
     return path
 
 
@@ -414,9 +414,9 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
 # =============================================================================
 
 def main():
-    """Main execution function"""
+    """CLI entry point."""
     logger.info("")
-    logger.info("🚀 SILVER LAYER: ECONOMIC PROCESSOR")
+    logger.info(" SILVER LAYER: ECONOMIC PROCESSOR")
     logger.info("")
     
     try:
@@ -433,13 +433,13 @@ def main():
         return 0
         
     except FileNotFoundError as e:
-        logger.warning(f"⚠️ Bronze economic data not found: {e}")
-        logger.warning("⚠️ Run bronze/economic_loader.py first")
+        logger.warning(f"[WARN] Bronze economic data not found: {e}")
+        logger.warning("[WARN] Run bronze/economic_loader.py first")
         return 1
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ Processing failed: {str(e)}")
+        logger.error(f"[ERR] Processing failed: {str(e)}")
         import traceback
         traceback.print_exc()
         logger.error("")

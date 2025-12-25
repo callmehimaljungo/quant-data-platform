@@ -114,16 +114,16 @@ class DataQualityMonitor:
         self._write_to_log(metric)
         
         # Log summary
-        logger.info(f"📊 [{layer.upper()}] {step}")
+        logger.info(f" [{layer.upper()}] {step}")
         logger.info(f"   Rows: {metric['row_count']:,} | Columns: {metric['column_count']}")
         if metric.get('ticker_count'):
             logger.info(f"   Tickers: {metric['ticker_count']:,}")
         if metric.get('date_min'):
             logger.info(f"   Date range: {metric['date_min']} to {metric['date_max']}")
         if metric['total_nulls'] > 0:
-            logger.warning(f"   ⚠️ Nulls: {metric['total_nulls']:,} ({metric['null_rate']:.2%})")
+            logger.warning(f"   [WARN] Nulls: {metric['total_nulls']:,} ({metric['null_rate']:.2%})")
         if metric['duplicate_rows'] > 0:
-            logger.warning(f"   ⚠️ Duplicates: {metric['duplicate_rows']:,}")
+            logger.warning(f"   [WARN] Duplicates: {metric['duplicate_rows']:,}")
         
         return metric
     
@@ -173,13 +173,13 @@ class DataQualityMonitor:
         }
         
         # Log comparison
-        logger.info(f"\n📊 LAYER COMPARISON: {layer1.upper()} → {layer2.upper()}")
+        logger.info(f"\n LAYER COMPARISON: {layer1.upper()} → {layer2.upper()}")
         logger.info(f"   {layer1}: {m1['row_count']:,} rows")
         logger.info(f"   {layer2}: {m2['row_count']:,} rows")
         logger.info(f"   Rows dropped: {rows_diff:,} ({drop_rate:.2%})")
         
         if drop_rate > 0.05:
-            logger.warning(f"   ⚠️ HIGH DROP RATE: {drop_rate:.2%} > 5% threshold")
+            logger.warning(f"   [WARN] HIGH DROP RATE: {drop_rate:.2%} > 5% threshold")
         elif drop_rate > 0.01:
             logger.info(f"   ℹ️ Moderate drop rate: {drop_rate:.2%}")
         else:
@@ -291,7 +291,7 @@ def quick_quality_check(df: pd.DataFrame, name: str = "DataFrame") -> Dict[str, 
     print(f"QUALITY CHECK: {name}")
     print(f"{'='*60}")
     
-    print(f"\n📊 Basic Stats:")
+    print(f"\n Basic Stats:")
     print(f"   Rows: {len(df):,}")
     print(f"   Columns: {len(df.columns)}")
     print(f"   Memory: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
@@ -301,11 +301,11 @@ def quick_quality_check(df: pd.DataFrame, name: str = "DataFrame") -> Dict[str, 
     total_nulls = null_counts.sum()
     null_cols = null_counts[null_counts > 0]
     
-    print(f"\n🔍 Null Analysis:")
+    print(f"\n Null Analysis:")
     if len(null_cols) == 0:
         print("   ✅ No null values found")
     else:
-        print(f"   ⚠️ Total nulls: {total_nulls:,}")
+        print(f"   [WARN] Total nulls: {total_nulls:,}")
         for col, count in null_cols.items():
             pct = count / len(df) * 100
             print(f"      {col}: {count:,} ({pct:.1f}%)")
@@ -325,7 +325,7 @@ def quick_quality_check(df: pd.DataFrame, name: str = "DataFrame") -> Dict[str, 
     # Ticker stats
     for col in ['ticker', 'Ticker']:
         if col in df.columns:
-            print(f"\n📈 Ticker Stats:")
+            print(f"\n Ticker Stats:")
             print(f"   Unique tickers: {df[col].nunique():,}")
             ticker_counts = df[col].value_counts()
             print(f"   Min records per ticker: {ticker_counts.min():,}")

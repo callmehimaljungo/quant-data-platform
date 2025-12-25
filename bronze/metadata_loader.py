@@ -44,10 +44,10 @@ logger = logging.getLogger(__name__)
 try:
     import yfinance as yf
     YFINANCE_AVAILABLE = True
-    logger.info("✓ yfinance available")
+    logger.info("[OK] yfinance available")
 except ImportError:
     YFINANCE_AVAILABLE = False
-    logger.warning("⚠️ yfinance not installed. Install with: pip install yfinance")
+    logger.warning("[WARN] yfinance not installed. Install with: pip install yfinance")
 
 
 # =============================================================================
@@ -76,7 +76,7 @@ def load_checkpoint() -> Dict[str, Any]:
         try:
             with open(CHECKPOINT_FILE, 'r') as f:
                 checkpoint = json.load(f)
-            logger.info(f"✓ Loaded checkpoint: {len(checkpoint.get('fetched_tickers', []))} tickers already fetched")
+            logger.info(f"[OK] Loaded checkpoint: {len(checkpoint.get('fetched_tickers', []))} tickers already fetched")
             return checkpoint
         except Exception as e:
             logger.warning(f"Failed to load checkpoint: {e}")
@@ -119,7 +119,7 @@ def clear_checkpoint() -> None:
     """Clear checkpoint file after successful completion"""
     if CHECKPOINT_FILE.exists():
         CHECKPOINT_FILE.unlink()
-        logger.info("✓ Checkpoint file cleared")
+        logger.info("[OK] Checkpoint file cleared")
 
 
 # =============================================================================
@@ -300,9 +300,9 @@ def load_stock_metadata(
     
     # Log summary
     success_rate = len(df) / len(tickers) * 100
-    logger.info(f"\n✓ Fetched metadata for {len(df):,} tickers ({success_rate:.1f}%)")
-    logger.info(f"✓ Sectors: {df['sector'].nunique()} unique")
-    logger.info(f"✓ Industries: {df['industry'].nunique()} unique")
+    logger.info(f"\n[OK] Fetched metadata for {len(df):,} tickers ({success_rate:.1f}%)")
+    logger.info(f"[OK] Sectors: {df['sector'].nunique()} unique")
+    logger.info(f"[OK] Industries: {df['industry'].nunique()} unique")
     
     # Sector distribution
     logger.info("\nSector Distribution:")
@@ -319,7 +319,7 @@ def load_stock_metadata(
         with open(json_file, 'w') as f:
             json.dump(raw_data, f, indent=2, default=str)
         
-        logger.info(f"✓ Saved raw JSON to {json_file}")
+        logger.info(f"[OK] Saved raw JSON to {json_file}")
     
     duration = (datetime.now() - start_time).total_seconds()
     logger.info("=" * 70)
@@ -345,7 +345,7 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
     logger.info(f"Saving to Lakehouse: {OUTPUT_DIR}")
     path = pandas_to_lakehouse(df, OUTPUT_DIR, mode="overwrite")
     
-    logger.info(f"✓ Saved to {path}")
+    logger.info(f"[OK] Saved to {path}")
     return path
 
 
@@ -362,7 +362,7 @@ def register_in_universe(df: pd.DataFrame):
     tickers = df['ticker'].unique().tolist()
     universe.register_source('metadata', tickers)
     
-    logger.info(f"✓ Registered {len(tickers):,} tickers in universe")
+    logger.info(f"[OK] Registered {len(tickers):,} tickers in universe")
 
 
 # =============================================================================
@@ -370,15 +370,9 @@ def register_in_universe(df: pd.DataFrame):
 # =============================================================================
 
 def main(max_tickers: Optional[int] = None, test: bool = False):
-    """
-    Main execution function
-    
-    Args:
-        max_tickers: Maximum tickers to fetch (for testing)
-        test: If True, only fetch 10 tickers for testing
-    """
+    """CLI entry point."""
     logger.info("")
-    logger.info("🚀 BRONZE LAYER: STOCK METADATA LOADER")
+    logger.info(" BRONZE LAYER: STOCK METADATA LOADER")
     logger.info("")
     
     try:
@@ -406,7 +400,7 @@ def main(max_tickers: Optional[int] = None, test: bool = False):
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ Metadata loading failed: {str(e)}")
+        logger.error(f"[ERR] Metadata loading failed: {str(e)}")
         import traceback
         traceback.print_exc()
         logger.error("")

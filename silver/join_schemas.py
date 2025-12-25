@@ -68,7 +68,7 @@ def load_prices() -> pd.DataFrame:
     df = pd.read_parquet(PRICES_SILVER)
     df['date'] = pd.to_datetime(df['date'])
     
-    logger.info(f"✓ Loaded prices: {len(df):,} rows, {df['ticker'].nunique():,} tickers")
+    logger.info(f"[OK] Loaded prices: {len(df):,} rows, {df['ticker'].nunique():,} tickers")
     return df
 
 
@@ -77,7 +77,7 @@ def load_metadata() -> Optional[pd.DataFrame]:
     from utils.lakehouse_helper import lakehouse_to_pandas, is_lakehouse_table
     
     if not is_lakehouse_table(METADATA_SILVER):
-        logger.warning(f"⚠️ Metadata not found: {METADATA_SILVER}")
+        logger.warning(f"[WARN] Metadata not found: {METADATA_SILVER}")
         return None
     
     df = lakehouse_to_pandas(METADATA_SILVER)
@@ -92,7 +92,7 @@ def load_metadata() -> Optional[pd.DataFrame]:
     if 'ticker' in df.columns:
         df = df.drop_duplicates(subset=['ticker'], keep='last')
     
-    logger.info(f"✓ Loaded metadata: {len(df):,} tickers")
+    logger.info(f"[OK] Loaded metadata: {len(df):,} tickers")
     return df
 
 
@@ -101,7 +101,7 @@ def load_benchmarks() -> Optional[pd.DataFrame]:
     from utils.lakehouse_helper import lakehouse_to_pandas, is_lakehouse_table
     
     if not is_lakehouse_table(BENCHMARKS_BRONZE):
-        logger.warning(f"⚠️ Benchmarks not found: {BENCHMARKS_BRONZE}")
+        logger.warning(f"[WARN] Benchmarks not found: {BENCHMARKS_BRONZE}")
         return None
     
     df = lakehouse_to_pandas(BENCHMARKS_BRONZE)
@@ -110,7 +110,7 @@ def load_benchmarks() -> Optional[pd.DataFrame]:
     spy_df = df[df['ticker'] == 'SPY'].copy()
     
     if len(spy_df) == 0:
-        logger.warning("⚠️ SPY data not found in benchmarks")
+        logger.warning("[WARN] SPY data not found in benchmarks")
         return None
     
     # Calculate SPY daily return
@@ -122,7 +122,7 @@ def load_benchmarks() -> Optional[pd.DataFrame]:
     spy_df = spy_df[['date', 'spy_return', 'spy_close']].copy()
     spy_df['date'] = pd.to_datetime(spy_df['date'])
     
-    logger.info(f"✓ Loaded SPY benchmark: {len(spy_df):,} days")
+    logger.info(f"[OK] Loaded SPY benchmark: {len(spy_df):,} days")
     return spy_df
 
 
@@ -131,7 +131,7 @@ def load_economic() -> Optional[pd.DataFrame]:
     from utils.lakehouse_helper import lakehouse_to_pandas, is_lakehouse_table
     
     if not is_lakehouse_table(ECONOMIC_SILVER):
-        logger.warning(f"⚠️ Economic data not found: {ECONOMIC_SILVER}")
+        logger.warning(f"[WARN] Economic data not found: {ECONOMIC_SILVER}")
         return None
     
     df = lakehouse_to_pandas(ECONOMIC_SILVER)
@@ -144,7 +144,7 @@ def load_economic() -> Optional[pd.DataFrame]:
     
     df['date'] = pd.to_datetime(df['date'])
     
-    logger.info(f"✓ Loaded economic: {len(df):,} days")
+    logger.info(f"[OK] Loaded economic: {len(df):,} days")
     return df
 
 
@@ -153,7 +153,7 @@ def load_news_aggregated() -> Optional[pd.DataFrame]:
     from utils.lakehouse_helper import lakehouse_to_pandas, is_lakehouse_table
     
     if not is_lakehouse_table(NEWS_SILVER):
-        logger.warning(f"⚠️ News data not found: {NEWS_SILVER}")
+        logger.warning(f"[WARN] News data not found: {NEWS_SILVER}")
         return None
     
     df = lakehouse_to_pandas(NEWS_SILVER)
@@ -174,7 +174,7 @@ def load_news_aggregated() -> Optional[pd.DataFrame]:
         'avg_sentiment': 'daily_sentiment'
     })
     
-    logger.info(f"✓ Loaded news: {len(agg_df):,} ticker-dates")
+    logger.info(f"[OK] Loaded news: {len(agg_df):,} ticker-dates")
     return agg_df
 
 
@@ -417,7 +417,7 @@ def join_all_schemas(
     logger.info("=" * 70)
     
     # Step 1: Load all data
-    logger.info("\n📊 Loading Data Sources...")
+    logger.info("\n Loading Data Sources...")
     prices_df = load_prices()
     metadata_df = load_metadata()
     benchmark_df = load_benchmarks()
@@ -472,7 +472,7 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
     logger.info(f"Saving to Lakehouse: {OUTPUT_DIR}")
     path = pandas_to_lakehouse(df, OUTPUT_DIR, mode="overwrite")
     
-    logger.info(f"✓ Saved to {path}")
+    logger.info(f"[OK] Saved to {path}")
     return path
 
 
@@ -481,9 +481,9 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
 # =============================================================================
 
 def main(filter_intersection: bool = True, min_sources: int = 1):
-    """Main execution function"""
+    """CLI entry point."""
     logger.info("")
-    logger.info("🚀 SILVER LAYER: SCHEMA JOIN")
+    logger.info(" SILVER LAYER: SCHEMA JOIN")
     logger.info("")
     
     try:
@@ -503,13 +503,13 @@ def main(filter_intersection: bool = True, min_sources: int = 1):
         return 0
         
     except FileNotFoundError as e:
-        logger.error(f"❌ Required data not found: {e}")
-        logger.error("❌ Run silver/clean.py first")
+        logger.error(f"[ERR] Required data not found: {e}")
+        logger.error("[ERR] Run silver/clean.py first")
         return 1
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ Processing failed: {str(e)}")
+        logger.error(f"[ERR] Processing failed: {str(e)}")
         import traceback
         traceback.print_exc()
         logger.error("")

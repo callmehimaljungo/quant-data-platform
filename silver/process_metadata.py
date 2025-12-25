@@ -123,7 +123,7 @@ def load_bronze_metadata() -> pd.DataFrame:
         else:
             raise FileNotFoundError(f"No Bronze metadata found at {INPUT_DIR} or {json_dir}")
     
-    logger.info(f"✓ Loaded {len(df):,} rows from Bronze")
+    logger.info(f"[OK] Loaded {len(df):,} rows from Bronze")
     return df
 
 
@@ -169,7 +169,7 @@ def flatten_json_fields(df: pd.DataFrame) -> pd.DataFrame:
             if col not in df.columns:
                 df[col] = extras_df[col]
         
-        logger.info(f"✓ Extracted {len(extras_df.columns)} additional fields from JSON")
+        logger.info(f"[OK] Extracted {len(extras_df.columns)} additional fields from JSON")
     
     return df
 
@@ -211,7 +211,7 @@ def standardize_sectors(df: pd.DataFrame) -> pd.DataFrame:
     
     new_sectors = df['sector'].nunique()
     
-    logger.info(f"✓ Standardized {original_sectors} → {new_sectors} sector categories")
+    logger.info(f"[OK] Standardized {original_sectors} → {new_sectors} sector categories")
     
     # Log sector distribution
     sector_counts = df['sector'].value_counts()
@@ -336,7 +336,7 @@ def save_to_lakehouse(df: pd.DataFrame) -> str:
     logger.info(f"Saving to Lakehouse: {OUTPUT_DIR}")
     path = pandas_to_lakehouse(df, OUTPUT_DIR, mode="overwrite")
     
-    logger.info(f"✓ Saved to {path}")
+    logger.info(f"[OK] Saved to {path}")
     return path
 
 
@@ -348,7 +348,7 @@ def register_in_universe(df: pd.DataFrame):
         universe = get_universe()
         tickers = df['ticker'].unique().tolist()
         universe.register_source('silver_metadata', tickers)
-        logger.info(f"✓ Registered {len(tickers):,} tickers in universe")
+        logger.info(f"[OK] Registered {len(tickers):,} tickers in universe")
 
 
 # =============================================================================
@@ -356,9 +356,9 @@ def register_in_universe(df: pd.DataFrame):
 # =============================================================================
 
 def main():
-    """Main execution function"""
+    """CLI entry point."""
     logger.info("")
-    logger.info("🚀 SILVER LAYER: METADATA PROCESSOR")
+    logger.info(" SILVER LAYER: METADATA PROCESSOR")
     logger.info("")
     
     try:
@@ -378,13 +378,13 @@ def main():
         return 0
         
     except FileNotFoundError as e:
-        logger.warning(f"⚠️ Bronze metadata not found: {e}")
-        logger.warning("⚠️ Run bronze/metadata_loader.py first")
+        logger.warning(f"[WARN] Bronze metadata not found: {e}")
+        logger.warning("[WARN] Run bronze/metadata_loader.py first")
         return 1
         
     except Exception as e:
         logger.error("")
-        logger.error(f"❌ Processing failed: {str(e)}")
+        logger.error(f"[ERR] Processing failed: {str(e)}")
         import traceback
         traceback.print_exc()
         logger.error("")

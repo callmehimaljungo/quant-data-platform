@@ -36,10 +36,10 @@ logger = logging.getLogger(__name__)
 try:
     import duckdb
     LAKEHOUSE_AVAILABLE = True
-    logger.info(f"✓ DuckDB version: {duckdb.__version__}")
+    logger.info(f"[OK] DuckDB version: {duckdb.__version__}")
 except ImportError:
     LAKEHOUSE_AVAILABLE = False
-    logger.warning("⚠️ DuckDB not installed. Install with: pip install duckdb")
+    logger.warning("[WARN] DuckDB not installed. Install with: pip install duckdb")
 
 
 # =============================================================================
@@ -150,7 +150,7 @@ def pandas_to_lakehouse(
     
     save_metadata(path, metadata)
     
-    logger.info(f"✓ Saved to Lakehouse (version {new_version}): {path}")
+    logger.info(f"[OK] Saved to Lakehouse (version {new_version}): {path}")
     
     return str(path)
 
@@ -203,7 +203,7 @@ def lakehouse_to_pandas(
     df = con.execute(f"SELECT * FROM read_parquet('{data_file}')").fetchdf()
     con.close()
     
-    logger.info(f"✓ Loaded {len(df):,} rows from Lakehouse")
+    logger.info(f"[OK] Loaded {len(df):,} rows from Lakehouse")
     
     return df
 
@@ -273,7 +273,7 @@ def convert_parquet_to_lakehouse(
     df = pd.read_parquet(parquet_path)
     pandas_to_lakehouse(df, lakehouse_path)
     
-    logger.info(f"✓ Converted to Lakehouse: {lakehouse_path}")
+    logger.info(f"[OK] Converted to Lakehouse: {lakehouse_path}")
     return str(lakehouse_path)
 
 
@@ -299,7 +299,7 @@ if __name__ == "__main__":
     print("=" * 70)
     
     if LAKEHOUSE_AVAILABLE:
-        print(f"✓ DuckDB version: {duckdb.__version__}")
+        print(f"[OK] DuckDB version: {duckdb.__version__}")
         
         # Test with sample data
         try:
@@ -313,38 +313,38 @@ if __name__ == "__main__":
             
             # Test write
             pandas_to_lakehouse(test_df, test_path)
-            print(f"✓ Test write successful: {test_path}")
+            print(f"[OK] Test write successful: {test_path}")
             
             # Test read
             read_df = lakehouse_to_pandas(test_path)
-            print(f"✓ Test read successful: {len(read_df)} rows")
+            print(f"[OK] Test read successful: {len(read_df)} rows")
             
             # Test append
             pandas_to_lakehouse(test_df, test_path, mode="append")
-            print("✓ Test append successful")
+            print("[OK] Test append successful")
             
             # Test history
             show_history(test_path)
             
             # Test time travel
             df_v0 = lakehouse_to_pandas(test_path, version=0)
-            print(f"✓ Time travel (v0): {len(df_v0)} rows")
+            print(f"[OK] Time travel (v0): {len(df_v0)} rows")
             
             # Show table info
             info = get_table_info(test_path)
-            print(f"✓ Table info: {info}")
+            print(f"[OK] Table info: {info}")
             
             # Cleanup
             import shutil
             shutil.rmtree(test_path, ignore_errors=True)
-            print("✓ Test cleanup complete")
+            print("[OK] Test cleanup complete")
             
         except Exception as e:
-            print(f"❌ Error: {str(e)}")
+            print(f"[ERR] Error: {str(e)}")
             import traceback
             traceback.print_exc()
     else:
-        print("❌ DuckDB not available")
+        print("[ERR] DuckDB not available")
         print("  Install with: pip install duckdb")
     
     print("=" * 70)
