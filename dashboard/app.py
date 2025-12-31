@@ -542,7 +542,12 @@ def render_model_results():
             with col2:
                 st.metric("Holdings", len(df))
             with col3:
-                st.metric("Avg Sharpe", f"{df['sharpe_ratio'].mean():.2f}")
+                # Use return_stability instead of sharpe_ratio (which doesn't exist in real data)
+                stability_col = 'return_stability' if 'return_stability' in df.columns else 'sharpe_ratio'
+                if stability_col in df.columns:
+                    st.metric("Return Stability", f"{df[stability_col].mean():.2f}")
+                else:
+                    st.metric("Avg Volatility", f"{df['volatility'].mean()*100:.1f}%")
             
             # Weights pie chart
             col1, col2 = st.columns(2)
