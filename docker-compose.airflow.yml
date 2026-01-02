@@ -21,6 +21,7 @@ x-airflow-common: &airflow-common
     - ./airflow/plugins:/opt/airflow/plugins
     - .:/opt/airflow/project
     - ./data:/opt/airflow/project/data
+    - ./kaggle.json:/home/airflow/.kaggle/kaggle.json:ro
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     postgres:

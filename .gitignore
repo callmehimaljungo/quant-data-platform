@@ -38,6 +38,9 @@ ENV/
 .env
 .env.local
 
+# Kaggle API credentials
+kaggle.json
+
 # Data files (too large for git)
 data/
 *.parquet
