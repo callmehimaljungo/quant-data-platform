@@ -137,31 +137,31 @@ def create_sample_sector_metrics() -> pd.DataFrame:
 # =============================================================================
 def render_sidebar():
     """Render sidebar navigation"""
-    st.sidebar.title(" Quant Data Platform")
+    st.sidebar.title("📊 Nền tảng Dữ liệu Quant")
     st.sidebar.markdown("---")
     
     page = st.sidebar.radio(
-        "Navigation",
-        ["🏠 Overview", " Risk Metrics", "🏢 Sector Analysis", "🤖 Model Results", "⚙️ Settings"]
+        "Điều hướng",
+        ["🏠 Tổng quan", "📈 Risk Metrics", "🏢 Phân tích Sector", "🤖 Kết quả Model", "⚙️ Cài đặt"]
     )
     
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### Data Status")
+    st.sidebar.markdown("### Trạng thái Dữ liệu")
     
     # Check R2 availability
     r2_available = R2_LOADER_AVAILABLE and is_r2_available() if R2_LOADER_AVAILABLE else False
     if r2_available:
-        st.sidebar.markdown("☁️ **R2 Cloud: Connected**")
+        st.sidebar.markdown("☁️ **R2 Cloud: Đã kết nối**")
     
     # Check data availability
     risk_data_exists = r2_available or (GOLD_DIR / 'ticker_metrics_lakehouse').exists() or (GOLD_DIR / 'risk_metrics_lakehouse').exists()
-    st.sidebar.markdown(f"Risk Metrics: {'✅ Real Data' if risk_data_exists else '⚠️ Sample'}")
+    st.sidebar.markdown(f"Risk Metrics: {'✅ Dữ liệu thật' if risk_data_exists else '⚠️ Mẫu'}")
     
     sector_data_exists = r2_available or (GOLD_DIR / 'sector_metrics_lakehouse').exists() or (GOLD_DIR / 'sector_risk_metrics_lakehouse').exists()
-    st.sidebar.markdown(f"Sector Metrics: {'✅ Real Data' if sector_data_exists else '⚠️ Sample'}")
+    st.sidebar.markdown(f"Sector Metrics: {'✅ Dữ liệu thật' if sector_data_exists else '⚠️ Mẫu'}")
     
     st.sidebar.markdown("---")
-    st.sidebar.markdown(f"*Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*")
+    st.sidebar.markdown(f"*Cập nhật lúc: {datetime.now().strftime('%d/%m/%Y %H:%M')}*")
     
     return page
 
@@ -171,7 +171,7 @@ def render_sidebar():
 # =============================================================================
 def render_overview():
     """Render overview page"""
-    st.title("🏠 Portfolio Overview")
+    st.title("🏠 Tổng quan Portfolio")
     
     # Load data
     risk_df = load_risk_metrics()
@@ -182,33 +182,33 @@ def render_overview():
     
     with col1:
         st.metric(
-            "Total Tickers",
+            "Tổng số Ticker",
             f"{len(risk_df):,}",
-            help="Number of tickers analyzed"
+            help="Số lượng cổ phiếu được phân tích"
         )
     
     with col2:
         avg_sharpe = risk_df['sharpe_ratio'].mean()
         st.metric(
-            "Avg Sharpe Ratio",
+            "Sharpe Ratio TB",
             f"{avg_sharpe:.2f}",
-            help="Average Sharpe ratio across all tickers"
+            help="Sharpe Ratio trung bình của tất cả ticker"
         )
     
     with col3:
-        avg_vol = risk_df['volatility'].mean() * 100  # Convert to percentage
+        avg_vol = risk_df['volatility'].mean() * 100
         st.metric(
-            "Avg Volatility",
+            "Volatility TB",
             f"{avg_vol:.1f}%",
-            help="Average annualized volatility"
+            help="Độ biến động trung bình năm"
         )
     
     with col4:
         avg_mdd = risk_df['max_drawdown'].mean()
         st.metric(
-            "Avg Max Drawdown",
+            "Max Drawdown TB",
             f"{avg_mdd:.1f}%",
-            help="Average maximum drawdown"
+            help="Mức sụt giảm tối đa trung bình"
         )
     
     st.markdown("---")
@@ -217,7 +217,7 @@ def render_overview():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader(" Sharpe Ratio Distribution")
+        st.subheader("📊 Phân phối Sharpe Ratio")
         fig = px.histogram(
             risk_df, 
             x='sharpe_ratio',
@@ -228,7 +228,7 @@ def render_overview():
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        st.subheader(" Sector Performance")
+        st.subheader("📈 Hiệu suất theo Sector")
         fig = px.bar(
             sector_df.sort_values('sharpe_ratio', ascending=True),
             x='sharpe_ratio',
@@ -241,7 +241,7 @@ def render_overview():
         st.plotly_chart(fig, use_container_width=True)
     
     # Top Performers Table
-    st.subheader("🏆 Top 10 by Sharpe Ratio")
+    st.subheader("🏆 Top 10 theo Sharpe Ratio")
     display_cols = ['ticker', 'sector', 'sharpe_ratio', 'volatility', 'max_drawdown']
     available_cols = [c for c in display_cols if c in risk_df.columns]
     top_10 = risk_df.nlargest(10, 'sharpe_ratio')[available_cols]
@@ -253,7 +253,7 @@ def render_overview():
 # =============================================================================
 def render_risk_metrics():
     """Render risk metrics page"""
-    st.title(" Risk Metrics Dashboard")
+    st.title("📈 Bảng Risk Metrics")
     
     risk_df = load_risk_metrics()
     
@@ -261,12 +261,12 @@ def render_risk_metrics():
     col1, col2 = st.columns(2)
     
     with col1:
-        sectors = ['All'] + sorted(risk_df['sector'].unique().tolist())
-        selected_sector = st.selectbox("Filter by Sector", sectors)
+        sectors = ['Tất cả'] + sorted(risk_df['sector'].unique().tolist())
+        selected_sector = st.selectbox("Lọc theo Sector", sectors)
     
     with col2:
         sharpe_min = st.slider(
-            "Minimum Sharpe Ratio",
+            "Sharpe Ratio tối thiểu",
             min_value=float(risk_df['sharpe_ratio'].min()),
             max_value=float(risk_df['sharpe_ratio'].max()),
             value=float(risk_df['sharpe_ratio'].min())
@@ -274,14 +274,14 @@ def render_risk_metrics():
     
     # Apply filters
     filtered_df = risk_df.copy()
-    if selected_sector != 'All':
+    if selected_sector != 'Tất cả':
         filtered_df = filtered_df[filtered_df['sector'] == selected_sector]
     filtered_df = filtered_df[filtered_df['sharpe_ratio'] >= sharpe_min]
     
-    st.markdown(f"*Showing {len(filtered_df):,} tickers*")
+    st.markdown(f"*Hiển thị {len(filtered_df):,} ticker*")
     
     # Risk-Return Scatter
-    st.subheader(" Risk-Return Profile")
+    st.subheader("📈 Hồ sơ Rủi ro - Lợi nhuận")
     fig = px.scatter(
         filtered_df,
         x='volatility',
@@ -300,7 +300,7 @@ def render_risk_metrics():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader(" Volatility Distribution")
+        st.subheader("📊 Phân phối Volatility")
         fig = px.histogram(
             filtered_df,
             x='volatility',
@@ -310,7 +310,7 @@ def render_risk_metrics():
         st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        st.subheader(" Max Drawdown Distribution")
+        st.subheader("📉 Phân phối Max Drawdown")
         fig = px.histogram(
             filtered_df,
             x='max_drawdown',
@@ -320,7 +320,7 @@ def render_risk_metrics():
         st.plotly_chart(fig, use_container_width=True)
     
     # Data Table
-    st.subheader("📋 Risk Metrics Table")
+    st.subheader("📋 Bảng Risk Metrics")
     st.dataframe(
         filtered_df.sort_values('sharpe_ratio', ascending=False),
         use_container_width=True
@@ -332,23 +332,23 @@ def render_risk_metrics():
 # =============================================================================
 def render_sector_analysis():
     """Render sector analysis page"""
-    st.title("🏢 Sector Analysis")
+    st.title("🏢 Phân tích Sector")
     
     risk_df = load_risk_metrics()
     sector_df = load_sector_metrics()
     
     # Sector comparison
-    st.subheader(" Sector Comparison")
+    st.subheader("📊 So sánh Sector")
     
     metrics = ['sharpe_ratio', 'volatility', 'max_drawdown', 'num_tickers']
     selected_metric = st.selectbox(
-        "Select Metric",
+        "Chọn chỉ số",
         metrics,
         format_func=lambda x: {
-            'sharpe_ratio': 'Average Sharpe Ratio',
-            'volatility': 'Average Volatility',
-            'max_drawdown': 'Average Max Drawdown',
-            'num_tickers': 'Number of Tickers'
+            'sharpe_ratio': 'Sharpe Ratio trung bình',
+            'volatility': 'Volatility trung bình',
+            'max_drawdown': 'Max Drawdown trung bình',
+            'num_tickers': 'Số lượng Ticker'
         }.get(x, x)
     )
     
@@ -363,18 +363,18 @@ def render_sector_analysis():
     st.plotly_chart(fig, use_container_width=True)
     
     # Sector drill-down
-    st.subheader(" Sector Drill-Down")
-    selected_sector = st.selectbox("Select Sector", sorted(risk_df['sector'].unique()))
+    st.subheader("🔍 Chi tiết Sector")
+    selected_sector = st.selectbox("Chọn Sector", sorted(risk_df['sector'].unique()))
     
     sector_stocks = risk_df[risk_df['sector'] == selected_sector]
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Stocks", len(sector_stocks))
+        st.metric("Số cổ phiếu", len(sector_stocks))
     with col2:
-        st.metric("Avg Sharpe", f"{sector_stocks['sharpe_ratio'].mean():.2f}")
+        st.metric("Sharpe TB", f"{sector_stocks['sharpe_ratio'].mean():.2f}")
     with col3:
-        st.metric("Avg Vol", f"{sector_stocks['volatility'].mean()*100:.1f}%")
+        st.metric("Vol TB", f"{sector_stocks['volatility'].mean()*100:.1f}%")
     
     st.dataframe(
         sector_stocks.sort_values('sharpe_ratio', ascending=False).head(20),
@@ -387,21 +387,21 @@ def render_sector_analysis():
 # =============================================================================
 def render_settings():
     """Render settings page"""
-    st.title("⚙️ Settings")
+    st.title("⚙️ Cài đặt")
     
-    st.subheader("📁 Data Paths")
+    st.subheader("📁 Đường dẫn Dữ liệu")
     st.code(f"""
 GOLD_DIR: {GOLD_DIR}
 SILVER_DIR: {SILVER_DIR}
     """)
     
-    st.subheader("📋 GICS Sectors")
+    st.subheader("📋 Danh sách GICS Sectors")
     st.write(GICS_SECTORS)
     
-    st.subheader("🔄 Refresh Data")
-    if st.button("Clear Cache and Reload"):
+    st.subheader("🔄 Làm mới Dữ liệu")
+    if st.button("Xóa Cache và Tải lại"):
         st.cache_data.clear()
-        st.success("Cache cleared! Reload the page to see fresh data.")
+        st.success("✅ Đã xóa cache! Tải lại trang để xem dữ liệu mới.")
 
 
 # =============================================================================
@@ -503,7 +503,7 @@ def create_sample_backtest_results():
 
 def render_model_results():
     """Render model results page"""
-    st.title("🤖 Model Results & Strategy Performance")
+    st.title("🤖 Kết quả Model & Hiệu suất Strategy")
     
     strategies = load_strategy_results()
     
@@ -511,17 +511,17 @@ def render_model_results():
     strategy_names = list(strategies.keys())
     
     # Performance Summary
-    st.subheader(" Strategy Performance Summary")
+    st.subheader("📈 Tóm tắt Hiệu suất Strategy")
     
     # Create performance metrics table
     perf_data = {
         'Strategy': ['Low-Beta Quality', 'Sector Rotation', 'Sentiment Allocation', 'SPY (Benchmark)'],
-        'Total Return': ['42.5%', '38.2%', '51.3%', '35.8%'],
-        'Annualized Return': ['9.3%', '8.5%', '10.9%', '8.0%'],
+        'Tổng Lợi nhuận': ['42.5%', '38.2%', '51.3%', '35.8%'],
+        'Lợi nhuận/Năm': ['9.3%', '8.5%', '10.9%', '8.0%'],
         'Volatility': ['12.4%', '18.2%', '22.5%', '16.8%'],
         'Sharpe Ratio': [0.75, 0.47, 0.48, 0.48],
         'Max Drawdown': ['-15.2%', '-22.4%', '-28.1%', '-19.8%'],
-        'Win Rate': ['58%', '52%', '54%', '-'],
+        'Tỷ lệ Win': ['58%', '52%', '54%', '-'],
     }
     perf_df = pd.DataFrame(perf_data)
     
@@ -531,7 +531,7 @@ def render_model_results():
     st.markdown("---")
     
     # Cumulative Returns Chart
-    st.subheader(" Cumulative Returns (Backtest)")
+    st.subheader("📈 Lợi nhuận Tích lũy (Backtest)")
     
     backtest_df = create_sample_backtest_results()
     
@@ -547,8 +547,8 @@ def render_model_results():
     
     fig.update_layout(
         height=500,
-        xaxis_title='Date',
-        yaxis_title='Portfolio Value ($)',
+        xaxis_title='Ngày',
+        yaxis_title='Giá trị Portfolio ($)',
         legend=dict(orientation='h', yanchor='bottom', y=1.02),
         hovermode='x unified'
     )
@@ -557,9 +557,9 @@ def render_model_results():
     st.markdown("---")
     
     # Strategy Details
-    st.subheader("📋 Strategy Details")
+    st.subheader("📋 Chi tiết Strategy")
     
-    selected_strategy = st.selectbox("Select Strategy", strategy_names)
+    selected_strategy = st.selectbox("Chọn Strategy", strategy_names)
     
     if selected_strategy and selected_strategy in strategies:
         df = strategies[selected_strategy]
@@ -637,17 +637,17 @@ def render_model_results():
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        start_date = st.date_input("Start Date", datetime(2020, 1, 1))
+        start_date = st.date_input("Ngày bắt đầu", datetime(2020, 1, 1))
     with col2:
-        end_date = st.date_input("End Date", datetime(2024, 1, 1))
+        end_date = st.date_input("Ngày kết thúc", datetime(2024, 1, 1))
     with col3:
-        initial_capital = st.number_input("Initial Capital ($)", value=100000, step=10000)
+        initial_capital = st.number_input("Vốn ban đầu ($)", value=100000, step=10000)
     
-    if st.button("🔄 Run Backtest", type="primary"):
-        with st.spinner("Running backtest..."):
+    if st.button("🔄 Chạy Backtest", type="primary"):
+        with st.spinner("Đang chạy backtest..."):
             import time
-            time.sleep(2)  # Simulate backtest
-            st.success("✅ Backtest completed! Results updated above.")
+            time.sleep(2)
+            st.success("✅ Hoàn tất Backtest! Kết quả đã cập nhật.")
             st.balloons()
 
 
@@ -658,15 +658,15 @@ def main():
     """Main app entry point"""
     page = render_sidebar()
     
-    if page == "🏠 Overview":
+    if page == "🏠 Tổng quan":
         render_overview()
-    elif page == " Risk Metrics":
+    elif page == "📈 Risk Metrics":
         render_risk_metrics()
-    elif page == "🏢 Sector Analysis":
+    elif page == "🏢 Phân tích Sector":
         render_sector_analysis()
-    elif page == "🤖 Model Results":
+    elif page == "🤖 Kết quả Model":
         render_model_results()
-    elif page == "⚙️ Settings":
+    elif page == "⚙️ Cài đặt":
         render_settings()
 
 
