@@ -28,6 +28,17 @@ from datetime import datetime, timedelta
 
 from config import GOLD_DIR, SILVER_DIR, GICS_SECTORS
 
+# R2 loader for cloud data
+try:
+    from dashboard.r2_loader import (
+        load_latest_from_lakehouse, 
+        is_r2_available,
+        load_parquet_from_r2
+    )
+    R2_LOADER_AVAILABLE = True
+except ImportError:
+    R2_LOADER_AVAILABLE = False
+
 
 # =============================================================================
 # PAGE CONFIG
@@ -45,8 +56,15 @@ st.set_page_config(
 # =============================================================================
 @st.cache_data(ttl=3600)
 def load_risk_metrics() -> pd.DataFrame:
-    """Load risk metrics from Gold layer"""
-    # Try multiple possible paths
+    """Load risk metrics from Gold layer (R2 first, then local)"""
+    
+    # Try R2 first
+    if R2_LOADER_AVAILABLE:
+        df = load_latest_from_lakehouse('processed/gold/ticker_metrics_lakehouse/')
+        if df is not None and len(df) > 0:
+            return df
+    
+    # Try local paths
     possible_paths = [
         GOLD_DIR / 'ticker_metrics_lakehouse',
         GOLD_DIR / 'risk_metrics_lakehouse',
@@ -64,8 +82,15 @@ def load_risk_metrics() -> pd.DataFrame:
 
 @st.cache_data(ttl=3600)
 def load_sector_metrics() -> pd.DataFrame:
-    """Load sector-level metrics"""
-    # Try multiple possible paths
+    """Load sector-level metrics (R2 first, then local)"""
+    
+    # Try R2 first
+    if R2_LOADER_AVAILABLE:
+        df = load_latest_from_lakehouse('processed/gold/sector_metrics_lakehouse/')
+        if df is not None and len(df) > 0:
+            return df
+    
+    # Try local paths
     possible_paths = [
         GOLD_DIR / 'sector_metrics_lakehouse',
         GOLD_DIR / 'sector_risk_metrics_lakehouse',
@@ -123,12 +148,17 @@ def render_sidebar():
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Data Status")
     
-    # Check data availability - check multiple possible paths
-    risk_data_exists = (GOLD_DIR / 'ticker_metrics_lakehouse').exists() or (GOLD_DIR / 'risk_metrics_lakehouse').exists()
-    st.sidebar.markdown(f"Risk Metrics: {'✅ Real Data' if risk_data_exists else '[WARN] Sample'}")
+    # Check R2 availability
+    r2_available = R2_LOADER_AVAILABLE and is_r2_available() if R2_LOADER_AVAILABLE else False
+    if r2_available:
+        st.sidebar.markdown("☁️ **R2 Cloud: Connected**")
     
-    sector_data_exists = (GOLD_DIR / 'sector_metrics_lakehouse').exists() or (GOLD_DIR / 'sector_risk_metrics_lakehouse').exists()
-    st.sidebar.markdown(f"Sector Metrics: {'✅ Real Data' if sector_data_exists else '[WARN] Sample'}")
+    # Check data availability
+    risk_data_exists = r2_available or (GOLD_DIR / 'ticker_metrics_lakehouse').exists() or (GOLD_DIR / 'risk_metrics_lakehouse').exists()
+    st.sidebar.markdown(f"Risk Metrics: {'✅ Real Data' if risk_data_exists else '⚠️ Sample'}")
+    
+    sector_data_exists = r2_available or (GOLD_DIR / 'sector_metrics_lakehouse').exists() or (GOLD_DIR / 'sector_risk_metrics_lakehouse').exists()
+    st.sidebar.markdown(f"Sector Metrics: {'✅ Real Data' if sector_data_exists else '⚠️ Sample'}")
     
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"*Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}*")
@@ -379,29 +409,30 @@ SILVER_DIR: {SILVER_DIR}
 # =============================================================================
 @st.cache_data(ttl=3600)
 def load_strategy_results():
-    """Load strategy results from Gold layer"""
+    """Load strategy results from Gold layer (R2 first, then local)"""
     strategies = {}
     
-    # Low Beta Quality
-    low_beta_path = GOLD_DIR / 'low_beta_quality_lakehouse'
-    if low_beta_path.exists():
-        parquet_files = list(low_beta_path.glob('*.parquet'))
-        if parquet_files:
-            strategies['Low-Beta Quality'] = pd.read_parquet(parquet_files[0])
+    # Strategy mapping: name -> R2 prefix / local folder
+    strategy_paths = {
+        'Low-Beta Quality': ('processed/gold/low_beta_quality_lakehouse/', 'low_beta_quality_lakehouse'),
+        'Sector Rotation': ('processed/gold/sector_rotation_lakehouse/', 'sector_rotation_lakehouse'),
+        'Sentiment Allocation': ('processed/gold/sentiment_allocation_lakehouse/', 'sentiment_allocation_lakehouse'),
+    }
     
-    # Sector Rotation
-    sector_rot_path = GOLD_DIR / 'sector_rotation_lakehouse'
-    if sector_rot_path.exists():
-        parquet_files = list(sector_rot_path.glob('*.parquet'))
-        if parquet_files:
-            strategies['Sector Rotation'] = pd.read_parquet(parquet_files[0])
-    
-    # Sentiment Allocation
-    sentiment_path = GOLD_DIR / 'sentiment_allocation_lakehouse'
-    if sentiment_path.exists():
-        parquet_files = list(sentiment_path.glob('*.parquet'))
-        if parquet_files:
-            strategies['Sentiment Allocation'] = pd.read_parquet(parquet_files[0])
+    for strategy_name, (r2_prefix, local_folder) in strategy_paths.items():
+        # Try R2 first
+        if R2_LOADER_AVAILABLE:
+            df = load_latest_from_lakehouse(r2_prefix)
+            if df is not None and len(df) > 0:
+                strategies[strategy_name] = df
+                continue
+        
+        # Try local path
+        local_path = GOLD_DIR / local_folder
+        if local_path.exists():
+            parquet_files = list(local_path.glob('*.parquet'))
+            if parquet_files:
+                strategies[strategy_name] = pd.read_parquet(parquet_files[0])
     
     # If no real data, create sample
     if not strategies:
