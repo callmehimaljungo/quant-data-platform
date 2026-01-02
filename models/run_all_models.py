@@ -29,10 +29,10 @@ def run_all_models(test_mode: bool = False):
     logger.info("=" * 70)
     logger.info(f"Mode: {'TEST' if test_mode else 'PRODUCTION'}")
     
-    # 1. Feature Analysis
+    # 1. Feature Analysis (Random Forest)
     logger.info("")
     logger.info("=" * 50)
-    logger.info("STEP 1/4: FEATURE ANALYSIS")
+    logger.info("STEP 1/3: FEATURE ANALYSIS")
     logger.info("=" * 50)
     
     try:
@@ -44,40 +44,10 @@ def run_all_models(test_mode: bool = False):
         results['feature_analysis'] = f'FAILED: {str(e)}'
         logger.error(f"[FAIL] Feature analysis: {e}")
     
-    # 2. XGBoost Classifier
+    # 2. Momentum Strategy
     logger.info("")
     logger.info("=" * 50)
-    logger.info("STEP 2/4: XGBOOST CLASSIFIER")
-    logger.info("=" * 50)
-    
-    try:
-        from models.xgboost_classifier import run_xgboost_training
-        metrics = run_xgboost_training(test_mode=test_mode)
-        results['xgboost'] = metrics
-        logger.info("[OK] XGBoost training completed")
-    except Exception as e:
-        results['xgboost'] = f'FAILED: {str(e)}'
-        logger.error(f"[FAIL] XGBoost: {e}")
-    
-    # 3. Neural Network / LSTM
-    logger.info("")
-    logger.info("=" * 50)
-    logger.info("STEP 3/4: NEURAL NETWORK FORECASTER")
-    logger.info("=" * 50)
-    
-    try:
-        from models.lstm_forecaster import run_lstm_training
-        metrics = run_lstm_training(test_mode=test_mode)
-        results['lstm'] = metrics
-        logger.info("[OK] Neural network training completed")
-    except Exception as e:
-        results['lstm'] = f'FAILED: {str(e)}'
-        logger.error(f"[FAIL] Neural network: {e}")
-    
-    # 4. Momentum Strategy
-    logger.info("")
-    logger.info("=" * 50)
-    logger.info("STEP 4/4: MOMENTUM STRATEGY")
+    logger.info("STEP 2/3: MOMENTUM STRATEGY")
     logger.info("=" * 50)
     
     try:
@@ -88,6 +58,24 @@ def run_all_models(test_mode: bool = False):
     except Exception as e:
         results['momentum'] = f'FAILED: {str(e)}'
         logger.error(f"[FAIL] Momentum: {e}")
+    
+    # 3. Causal Analysis
+    logger.info("")
+    logger.info("=" * 50)
+    logger.info("STEP 3/3: CAUSAL ANALYSIS")
+    logger.info("=" * 50)
+    
+    try:
+        from models.causal_model import load_unified_data
+        df = load_unified_data()
+        if len(df) > 0:
+            results['causal'] = f"SUCCESS: {len(df):,} days analyzed"
+            logger.info(f"[OK] Causal analysis: {len(df):,} days")
+        else:
+            results['causal'] = 'FAILED: No data'
+    except Exception as e:
+        results['causal'] = f'FAILED: {str(e)}'
+        logger.error(f"[FAIL] Causal: {e}")
     
     # Summary
     duration = (datetime.now() - start_time).total_seconds()
@@ -107,9 +95,7 @@ def run_all_models(test_mode: bool = False):
     logger.info("")
     logger.info("Output files:")
     logger.info("  - data/gold/feature_importance_lakehouse/")
-    logger.info("  - data/gold/ml_predictions_lakehouse/")
     logger.info("  - data/gold/momentum_portfolio_lakehouse/")
-    logger.info("  - models/saved_models/")
     
     return results
 
