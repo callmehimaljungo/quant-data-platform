@@ -82,18 +82,52 @@ def get_dynamic_risk_free_rate(year: int) -> float:
 
 
 # =============================================================================
-# LOAD DATA
+# LOAD DATA (MEMORY OPTIMIZED)
 # =============================================================================
+# Only load columns needed for risk calculations
+REQUIRED_COLUMNS = ['ticker', 'date', 'close', 'daily_return', 'sector']
+
+
 def load_silver_data() -> pd.DataFrame:
-    """Load data from Silver layer (Lakehouse or Parquet)"""
-    from utils import is_lakehouse_table, lakehouse_to_pandas
+    """Load data from Silver layer (Lakehouse or Parquet) - MEMORY OPTIMIZED
     
+    Only loads required columns to reduce memory by ~70%
+    """
+    import duckdb
+    from utils import is_lakehouse_table, get_metadata_path
+    import json
+    
+    # Try Lakehouse first
     if is_lakehouse_table(SILVER_LAKEHOUSE_PATH):
         logger.info(f"Loading from Silver Lakehouse: {SILVER_LAKEHOUSE_PATH}")
-        return lakehouse_to_pandas(SILVER_LAKEHOUSE_PATH)
+        
+        # Get the data file path from metadata
+        meta_path = get_metadata_path(SILVER_LAKEHOUSE_PATH)
+        with open(meta_path, 'r') as f:
+            metadata = json.load(f)
+        
+        if not metadata['versions']:
+            raise FileNotFoundError(f"No data found in: {SILVER_LAKEHOUSE_PATH}")
+        
+        version_info = metadata['versions'][-1]  # Latest version
+        data_file = SILVER_LAKEHOUSE_PATH / version_info['file']
+        
+        # Load only required columns using DuckDB (memory efficient!)
+        cols_str = ", ".join(REQUIRED_COLUMNS)
+        logger.info(f"  Loading only columns: {REQUIRED_COLUMNS}")
+        
+        con = duckdb.connect()
+        df = con.execute(f"SELECT {cols_str} FROM read_parquet('{data_file}')").fetchdf()
+        con.close()
+        
+        logger.info(f"[OK] Loaded {len(df):,} rows (memory-optimized)")
+        return df
+        
     elif SILVER_PARQUET_PATH.exists():
         logger.info(f"Loading from Silver Parquet: {SILVER_PARQUET_PATH}")
-        return pd.read_parquet(SILVER_PARQUET_PATH)
+        # Load only required columns
+        logger.info(f"  Loading only columns: {REQUIRED_COLUMNS}")
+        return pd.read_parquet(SILVER_PARQUET_PATH, columns=REQUIRED_COLUMNS)
     else:
         raise FileNotFoundError("No Silver data found. Run silver/clean_delta.py first.")
 
@@ -118,7 +152,7 @@ def get_spy_returns(df: pd.DataFrame) -> Tuple[pd.Series, bool]:
 # =============================================================================
 import gc
 
-BATCH_SIZE = 25  # Process tickers in small batches to avoid OOM (reduced from 100)
+BATCH_SIZE = 50  # Increased from 25 since we load fewer columns now
 
 
 def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series, 
@@ -129,8 +163,7 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
     """
     logger.info("Calculating per-ticker risk metrics (memory-optimized)...")
     
-    # Convert daily_return to decimal (in-place to save memory)
-    df = df.copy()
+    # Convert daily_return to decimal (in-place, no copy needed since we own the df)
     df['daily_return_decimal'] = df['daily_return'] / 100
     
     # Get unique tickers
