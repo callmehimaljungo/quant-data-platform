@@ -118,7 +118,7 @@ def get_spy_returns(df: pd.DataFrame) -> Tuple[pd.Series, bool]:
 # =============================================================================
 import gc
 
-BATCH_SIZE = 100  # Process tickers in batches to avoid OOM
+BATCH_SIZE = 25  # Process tickers in small batches to avoid OOM (reduced from 100)
 
 
 def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series, 
@@ -332,12 +332,19 @@ def run_risk_analysis() -> Dict[str, pd.DataFrame]:
     df = load_silver_data()
     logger.info(f"[OK] Loaded {len(df):,} rows")
     logger.info(f"  Tickers: {df['ticker'].nunique():,}")
+    logger.info(f"  Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
     
     # 2. Get SPY benchmark
     spy_returns, has_spy = get_spy_returns(df)
     
-    # 3. Calculate metrics (vectorized - fast!)
+    # 3. Calculate metrics (memory-optimized with batch processing)
     ticker_metrics = calculate_ticker_metrics_vectorized(df, spy_returns, has_spy)
+    
+    # Free memory - delete the large raw dataframe after processing
+    del df
+    del spy_returns
+    gc.collect()
+    logger.info("[OK] Freed raw data from memory")
     
     # 4. Sector aggregates
     sector_metrics = calculate_sector_risk_metrics(ticker_metrics)
