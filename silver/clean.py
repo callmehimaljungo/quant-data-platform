@@ -58,8 +58,13 @@ COLUMN_MAPPING = {
 # =============================================================================
 # LOAD DATA
 # =============================================================================
-def load_bronze_data() -> pd.DataFrame:
-    """Load data from Bronze layer."""
+def load_bronze_data(columns: list = None, sample_tickers: int = None) -> pd.DataFrame:
+    """Load data from Bronze layer with memory optimization.
+    
+    Args:
+        columns: Optional list of columns to load (reduces memory)
+        sample_tickers: If set, only load this many random tickers (for testing)
+    """
     if BRONZE_FILE.exists():
         bronze_path = BRONZE_FILE
     elif BRONZE_FILE_ALT.exists():
@@ -70,8 +75,36 @@ def load_bronze_data() -> pd.DataFrame:
         )
     
     logger.info(f"Loading data from {bronze_path}")
-    df = pd.read_parquet(bronze_path)
+    
+    # Use PyArrow for memory-efficient reading
+    import pyarrow.parquet as pq
+    
+    # Read metadata first to get info
+    parquet_file = pq.ParquetFile(bronze_path)
+    total_rows = parquet_file.metadata.num_rows
+    logger.info(f"[INFO] Total rows in file: {total_rows:,}")
+    
+    # Define columns to load (only essential ones to save memory)
+    if columns is None:
+        columns = ['Date', 'Ticker', 'Open', 'High', 'Low', 'Close', 'Volume']
+    
+    # Read with PyArrow (more memory efficient than pandas directly)
+    logger.info(f"[INFO] Loading columns: {columns}")
+    table = parquet_file.read(columns=columns)
+    df = table.to_pandas()
+    
+    # Sample tickers if requested (for testing)
+    if sample_tickers:
+        ticker_col = 'Ticker' if 'Ticker' in df.columns else 'ticker'
+        unique_tickers = df[ticker_col].unique()
+        if len(unique_tickers) > sample_tickers:
+            import random
+            sampled = random.sample(list(unique_tickers), sample_tickers)
+            df = df[df[ticker_col].isin(sampled)]
+            logger.info(f"[INFO] Sampled {sample_tickers} tickers for testing")
+    
     logger.info(f"[OK] Loaded {len(df):,} rows from Bronze layer")
+    logger.info(f"[OK] Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
     
     return df
 

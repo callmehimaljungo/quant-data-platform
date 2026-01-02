@@ -114,23 +114,34 @@ def get_spy_returns(df: pd.DataFrame) -> Tuple[pd.Series, bool]:
 
 
 # =============================================================================
-# VECTORIZED RISK CALCULATIONS (OPTIMIZED)
+# VECTORIZED RISK CALCULATIONS (OPTIMIZED - MEMORY EFFICIENT)
 # =============================================================================
+import gc
+
+BATCH_SIZE = 100  # Process tickers in batches to avoid OOM
+
+
 def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series, 
                                          has_spy: bool) -> pd.DataFrame:
     """
-    Calculate risk metrics using vectorized operations (FAST)
+    Calculate risk metrics using vectorized operations with batch processing.
+    Memory-optimized to handle large datasets without OOM.
     """
-    logger.info("Calculating per-ticker risk metrics (vectorized)...")
+    logger.info("Calculating per-ticker risk metrics (memory-optimized)...")
     
-    # Convert daily_return to decimal
+    # Convert daily_return to decimal (in-place to save memory)
     df = df.copy()
     df['daily_return_decimal'] = df['daily_return'] / 100
+    
+    # Get unique tickers
+    tickers = df['ticker'].unique()
+    total_tickers = len(tickers)
+    logger.info(f"  Processing {total_tickers:,} tickers in batches of {BATCH_SIZE}")
     
     # Group by ticker
     grouped = df.groupby('ticker')
     
-    # Basic aggregations (fast)
+    # Step 1: Basic aggregations (fast, memory-efficient)
     logger.info("  Step 1/5: Basic aggregations...")
     basic = grouped.agg({
         'date': ['min', 'max', 'count'],
@@ -144,7 +155,7 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
     
     logger.info(f"  Found {len(basic):,} tickers")
     
-    # Calculate Sharpe Ratio
+    # Step 2: Sharpe Ratio (vectorized - fast)
     logger.info("  Step 2/5: Sharpe Ratio...")
     daily_rf = RISK_FREE_RATE / TRADING_DAYS
     basic['sharpe_ratio'] = np.where(
@@ -153,117 +164,108 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
         np.nan
     )
     
-    # Volatility (annualized)
+    # Step 3: Volatility (vectorized)
     logger.info("  Step 3/5: Volatility...")
     basic['volatility'] = basic['std_return'] * np.sqrt(TRADING_DAYS)
     
-    # VaR 95% - need to calculate per ticker
+    # Step 4: VaR 95% (vectorized)
     logger.info("  Step 4/5: VaR 95%...")
     var_95 = grouped['daily_return_decimal'].quantile(0.05).reset_index()
     var_95.columns = ['ticker', 'var_95']
     basic = basic.merge(var_95, on='ticker', how='left')
     
-    # Max Drawdown - calculate per ticker
-    logger.info("  Step 5/5: Max Drawdown...")
+    # Free memory
+    del var_95
+    gc.collect()
     
-    def calc_max_drawdown(group):
-        prices = group.sort_values('date')['close']
-        if len(prices) < 30:
-            return np.nan
-        peak = prices.expanding(min_periods=1).max()
-        drawdown = (prices - peak) / peak
-        return drawdown.min()
+    # Step 5: Batch processing for expensive operations (Max Drawdown, Sortino, Beta/Alpha)
+    logger.info("  Step 5/5: Batch processing Max Drawdown, Sortino, Beta/Alpha...")
     
-    max_dd = grouped.apply(calc_max_drawdown).reset_index()
-    max_dd.columns = ['ticker', 'max_drawdown']
-    basic = basic.merge(max_dd, on='ticker', how='left')
+    # Initialize result columns
+    basic['max_drawdown'] = np.nan
+    basic['sortino_ratio'] = np.nan
+    basic['beta_static'] = np.nan
+    basic['beta_rolling_252'] = np.nan
+    basic['alpha'] = np.nan
     
-    # Sortino Ratio
-    logger.info("  Calculating Sortino...")
-    
-    def calc_sortino(group):
-        returns = group['daily_return_decimal']
-        if len(returns) < 30:
-            return np.nan
-        downside = returns[returns < 0]
-        if len(downside) == 0 or downside.std() == 0:
-            return np.nan
-        daily_rf = RISK_FREE_RATE / TRADING_DAYS
-        return ((returns.mean() - daily_rf) / downside.std()) * np.sqrt(TRADING_DAYS)
-    
-    sortino = grouped.apply(calc_sortino).reset_index()
-    sortino.columns = ['ticker', 'sortino_ratio']
-    basic = basic.merge(sortino, on='ticker', how='left')
-    
-    # Beta and Alpha (if SPY available)
-    if has_spy:
-        logger.info("  Calculating Beta & Alpha (static + rolling 252-day)...")
+    # Process in batches
+    for batch_idx in range(0, total_tickers, BATCH_SIZE):
+        batch_tickers = tickers[batch_idx:batch_idx + BATCH_SIZE]
+        batch_num = batch_idx // BATCH_SIZE + 1
+        total_batches = (total_tickers + BATCH_SIZE - 1) // BATCH_SIZE
         
-        def calc_beta_alpha(group):
-            returns = group.set_index('date')['daily_return_decimal']
-            
-            # FIX: Prevent look-ahead bias - only use SPY data <= max date of stock
-            max_stock_date = returns.index.max()
-            spy_filtered = spy_returns[spy_returns.index <= max_stock_date]
-            
-            aligned = pd.concat([returns, spy_filtered], axis=1).dropna()
-            
-            if len(aligned) < 60:
-                return pd.Series({
-                    'beta_static': np.nan, 
-                    'beta_rolling_252': np.nan,
-                    'alpha': np.nan
-                })
-            
-            stock = aligned.iloc[:, 0]
-            market = aligned.iloc[:, 1]
-            
-            # STATIC BETA: Full history
-            cov = stock.cov(market)
-            var = market.var()
-            
-            if var == 0:
-                return pd.Series({
-                    'beta_static': np.nan, 
-                    'beta_rolling_252': np.nan,
-                    'alpha': np.nan
-                })
-            
-            beta_static = cov / var
-            
-            # ROLLING BETA: Last 252 trading days (1 year)
-            # More relevant for current market conditions
-            if len(aligned) >= 252:
-                stock_recent = stock.tail(252)
-                market_recent = market.tail(252)
-                cov_rolling = stock_recent.cov(market_recent)
-                var_rolling = market_recent.var()
-                beta_rolling = cov_rolling / var_rolling if var_rolling > 0 else np.nan
-            else:
-                # Not enough data for rolling, use static
-                beta_rolling = beta_static
-            
-            # Alpha calculation using static beta
-            daily_rf = RISK_FREE_RATE / TRADING_DAYS
-            expected = daily_rf + beta_static * (market.mean() - daily_rf)
-            alpha = (stock.mean() - expected) * TRADING_DAYS
-            
-            return pd.Series({
-                'beta_static': beta_static,
-                'beta_rolling_252': beta_rolling,
-                'alpha': alpha
-            })
+        if batch_num % 5 == 1 or batch_num == total_batches:
+            logger.info(f"    Batch {batch_num}/{total_batches} ({len(batch_tickers)} tickers)...")
         
-        beta_alpha = grouped.apply(calc_beta_alpha).reset_index()
-        basic = basic.merge(beta_alpha, on='ticker', how='left')
+        # Filter data for this batch
+        batch_df = df[df['ticker'].isin(batch_tickers)]
+        batch_grouped = batch_df.groupby('ticker')
         
-        # Create 'beta' as alias for rolling (recommended for portfolio use)
-        basic['beta'] = basic['beta_rolling_252']
-    else:
-        basic['beta_static'] = np.nan
-        basic['beta_rolling_252'] = np.nan
-        basic['beta'] = np.nan
-        basic['alpha'] = np.nan
+        # Calculate Max Drawdown for batch
+        for ticker in batch_tickers:
+            try:
+                ticker_data = batch_grouped.get_group(ticker)
+                prices = ticker_data.sort_values('date')['close']
+                
+                if len(prices) >= 30:
+                    peak = prices.expanding(min_periods=1).max()
+                    drawdown = (prices - peak) / peak
+                    max_dd = drawdown.min()
+                    basic.loc[basic['ticker'] == ticker, 'max_drawdown'] = max_dd
+                
+                # Sortino
+                returns = ticker_data['daily_return_decimal']
+                if len(returns) >= 30:
+                    downside = returns[returns < 0]
+                    if len(downside) > 0 and downside.std() > 0:
+                        sortino = ((returns.mean() - daily_rf) / downside.std()) * np.sqrt(TRADING_DAYS)
+                        basic.loc[basic['ticker'] == ticker, 'sortino_ratio'] = sortino
+                
+                # Beta/Alpha (if SPY available)
+                if has_spy and len(ticker_data) >= 60:
+                    stock_returns = ticker_data.set_index('date')['daily_return_decimal']
+                    max_stock_date = stock_returns.index.max()
+                    spy_filtered = spy_returns[spy_returns.index <= max_stock_date]
+                    
+                    aligned = pd.concat([stock_returns, spy_filtered], axis=1).dropna()
+                    
+                    if len(aligned) >= 60:
+                        stock = aligned.iloc[:, 0]
+                        market = aligned.iloc[:, 1]
+                        
+                        cov = stock.cov(market)
+                        var = market.var()
+                        
+                        if var > 0:
+                            beta_static = cov / var
+                            basic.loc[basic['ticker'] == ticker, 'beta_static'] = beta_static
+                            
+                            # Rolling Beta (252 days)
+                            if len(aligned) >= 252:
+                                stock_recent = stock.tail(252)
+                                market_recent = market.tail(252)
+                                var_rolling = market_recent.var()
+                                if var_rolling > 0:
+                                    beta_rolling = stock_recent.cov(market_recent) / var_rolling
+                                    basic.loc[basic['ticker'] == ticker, 'beta_rolling_252'] = beta_rolling
+                            else:
+                                basic.loc[basic['ticker'] == ticker, 'beta_rolling_252'] = beta_static
+                            
+                            # Alpha
+                            expected = daily_rf + beta_static * (market.mean() - daily_rf)
+                            alpha = (stock.mean() - expected) * TRADING_DAYS
+                            basic.loc[basic['ticker'] == ticker, 'alpha'] = alpha
+                            
+            except Exception as e:
+                logger.warning(f"    Error processing {ticker}: {e}")
+                continue
+        
+        # Free batch memory
+        del batch_df, batch_grouped
+        gc.collect()
+    
+    # Create 'beta' as alias for rolling
+    basic['beta'] = basic['beta_rolling_252']
     
     # Convert to percentages
     basic['var_95_pct'] = basic['var_95'] * 100
@@ -275,6 +277,9 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
     basic = basic[basic['num_records'] >= 30]
     
     logger.info(f"[OK] Calculated metrics for {len(basic):,} tickers")
+    
+    # Final cleanup
+    gc.collect()
     
     return basic
 
