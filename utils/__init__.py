@@ -9,6 +9,7 @@ from .lakehouse_helper import (
     is_lakehouse_table,
     get_table_info,
     get_version_count,
+    get_metadata_path,
     LAKEHOUSE_AVAILABLE,
     # Aliases for backward compatibility with Delta Lake naming
     pandas_to_delta,
@@ -44,6 +45,7 @@ __all__ = [
     'is_lakehouse_table',
     'get_table_info',
     'get_version_count',
+    'get_metadata_path',
     'LAKEHOUSE_AVAILABLE',
     # Delta aliases
     'pandas_to_delta',
@@ -63,4 +65,10 @@ __all__ = [
     'register_tickers_from_bronze',
     'get_analyzed_tickers'
 ]
+
+# R2 Sync (lazy import to avoid boto3 requirement)
+def get_r2_sync():
+    """Get R2 sync module (requires boto3)"""
+    from . import r2_sync
+    return r2_sync
 

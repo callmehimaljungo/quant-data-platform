@@ -28,6 +28,7 @@ from datetime import datetime
 from typing import Dict, Tuple
 import pandas as pd
 import numpy as np
+import gc
 
 from config import SILVER_DIR, GOLD_DIR, LOG_FORMAT
 
@@ -39,14 +40,19 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # =============================================================================
 SILVER_PARQUET = SILVER_DIR / 'enriched_stocks.parquet'
+SILVER_LAKEHOUSE_PATH = SILVER_DIR / 'enriched_lakehouse'
 ECONOMIC_PATH = SILVER_DIR / 'economic_lakehouse'
 OUTPUT_PATH = GOLD_DIR / 'low_beta_quality_lakehouse'
+
+# Memory optimization: Only load required columns
+REQUIRED_COLUMNS = ['ticker', 'date', 'close', 'daily_return', 'sector']
 
 # Thông số chiến lược
 BETA_THRESHOLD = 1.0        # Chỉ chọn cổ phiếu có Beta < 1
 MIN_HISTORY_DAYS = 252      # Cần ít nhất 1 năm data
 TOP_N_STOCKS = 30           # Số cổ phiếu trong danh mục
 RISK_FREE_RATE = 0.05       # 5% năm (US Treasury)
+BATCH_SIZE = 100            # Process tickers in batches
 
 
 # =============================================================================
@@ -54,23 +60,50 @@ RISK_FREE_RATE = 0.05       # 5% năm (US Treasury)
 # =============================================================================
 def load_all_data() -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
     """
-    Load tất cả data cần thiết từ Silver layer
+    Load tất cả data cần thiết từ Silver layer - MEMORY OPTIMIZED
+    
+    Only loads required columns to reduce memory by ~70%
     
     Returns:
         - df_prices: DataFrame chứa price data
         - df_economic: DataFrame chứa economic indicators
         - spy_returns: Series chứa daily returns của SPY (benchmark)
     """
-    from utils import is_lakehouse_table, lakehouse_to_pandas
+    import duckdb
+    from utils import is_lakehouse_table, lakehouse_to_pandas, get_metadata_path
+    import json
     
-    logger.info("Loading data from Silver layer...")
+    logger.info("Loading data from Silver layer (MEMORY OPTIMIZED)...")
+    logger.info(f"  Loading only columns: {REQUIRED_COLUMNS}")
     
-    # 1. Load price data
-    if SILVER_PARQUET.exists():
-        df_prices = pd.read_parquet(SILVER_PARQUET)
-        logger.info(f"  [OK] Prices: {len(df_prices):,} rows, {df_prices['ticker'].nunique():,} tickers")
-    else:
-        raise FileNotFoundError(f"Price data not found: {SILVER_PARQUET}")
+    # 1. Load price data - prefer Lakehouse for efficiency
+    df_prices = None
+    
+    if is_lakehouse_table(SILVER_LAKEHOUSE_PATH):
+        logger.info(f"  Loading from Silver Lakehouse: {SILVER_LAKEHOUSE_PATH}")
+        meta_path = get_metadata_path(SILVER_LAKEHOUSE_PATH)
+        with open(meta_path, 'r') as f:
+            metadata = json.load(f)
+        
+        if metadata['versions']:
+            version_info = metadata['versions'][-1]
+            data_file = SILVER_LAKEHOUSE_PATH / version_info['file']
+            
+            # Use DuckDB for memory-efficient loading
+            cols_str = ", ".join(REQUIRED_COLUMNS)
+            con = duckdb.connect()
+            df_prices = con.execute(f"SELECT {cols_str} FROM read_parquet('{data_file}')").fetchdf()
+            con.close()
+    
+    if df_prices is None and SILVER_PARQUET.exists():
+        logger.info(f"  Loading from Silver Parquet: {SILVER_PARQUET}")
+        df_prices = pd.read_parquet(SILVER_PARQUET, columns=REQUIRED_COLUMNS)
+    
+    if df_prices is None:
+        raise FileNotFoundError("No Silver data found")
+    
+    logger.info(f"  [OK] Prices: {len(df_prices):,} rows, {df_prices['ticker'].nunique():,} tickers")
+    logger.info(f"  Memory usage: {df_prices.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
     
     # 2. Load economic data
     if is_lakehouse_table(ECONOMIC_PATH):
@@ -162,50 +195,67 @@ def build_low_beta_quality_portfolio(df_prices: pd.DataFrame,
     4. Chọn top N cổ phiếu
     5. Phân bổ tỷ trọng theo inverse volatility
     """
-    logger.info("Building Low-Beta Quality Portfolio...")
+    logger.info("Building Low-Beta Quality Portfolio (MEMORY OPTIMIZED)...")
     
-    # Bước 1: Tính metrics cho mỗi ticker
+    # Bước 1: Tính metrics cho mỗi ticker với batch processing
     logger.info("  Step 1: Calculating Beta and Quality metrics...")
     
     ticker_metrics = []
     tickers = df_prices['ticker'].unique()
+    total_tickers = len(tickers)
+    total_batches = (total_tickers + BATCH_SIZE - 1) // BATCH_SIZE
     
-    for i, ticker in enumerate(tickers):
-        if (i + 1) % 1000 == 0:
-            logger.info(f"    Processing {i+1}/{len(tickers)}...")
+    logger.info(f"  Processing {total_tickers:,} tickers in {total_batches} batches of {BATCH_SIZE}")
+    
+    # Group by ticker for faster lookup
+    grouped = df_prices.groupby('ticker')
+    
+    for batch_idx in range(0, total_tickers, BATCH_SIZE):
+        batch_tickers = tickers[batch_idx:batch_idx + BATCH_SIZE]
+        batch_num = batch_idx // BATCH_SIZE + 1
         
-        ticker_df = df_prices[df_prices['ticker'] == ticker].sort_values('date')
+        if batch_num % 5 == 1 or batch_num == total_batches:
+            logger.info(f"    Batch {batch_num}/{total_batches} ({len(batch_tickers)} tickers)...")
         
-        # Bỏ qua nếu không đủ data
-        if len(ticker_df) < MIN_HISTORY_DAYS:
-            continue
+        for ticker in batch_tickers:
+            try:
+                ticker_df = grouped.get_group(ticker).sort_values('date')
+                
+                # Bỏ qua nếu không đủ data
+                if len(ticker_df) < MIN_HISTORY_DAYS:
+                    continue
+                
+                returns = ticker_df['daily_return'].values / 100  # Convert to decimal
+                returns_series = ticker_df.set_index('date')['daily_return'] / 100
+                
+                # Tính Beta
+                beta = calculate_beta(returns_series, spy_returns)
+                if pd.isna(beta):
+                    continue
+                
+                # Tính Return Stability (proxy cho Quality)
+                stability = calculate_return_stability(pd.Series(returns))
+                
+                # Tính Volatility
+                volatility = np.std(returns) * np.sqrt(252)  # Annualized
+                
+                # Lấy sector
+                sector = ticker_df['sector'].iloc[0] if 'sector' in ticker_df.columns else 'Unknown'
+                
+                ticker_metrics.append({
+                    'ticker': ticker,
+                    'sector': sector,
+                    'beta': beta,
+                    'return_stability': stability,
+                    'volatility': volatility,
+                    'num_days': len(ticker_df),
+                    'avg_return': np.mean(returns) * 252,  # Annualized
+                })
+            except Exception as e:
+                continue
         
-        returns = ticker_df['daily_return'].values / 100  # Convert to decimal
-        returns_series = ticker_df.set_index('date')['daily_return'] / 100
-        
-        # Tính Beta
-        beta = calculate_beta(returns_series, spy_returns)
-        if pd.isna(beta):
-            continue
-        
-        # Tính Return Stability (proxy cho Quality)
-        stability = calculate_return_stability(pd.Series(returns))
-        
-        # Tính Volatility
-        volatility = np.std(returns) * np.sqrt(252)  # Annualized
-        
-        # Lấy sector
-        sector = ticker_df['sector'].iloc[0] if 'sector' in ticker_df.columns else 'Unknown'
-        
-        ticker_metrics.append({
-            'ticker': ticker,
-            'sector': sector,
-            'beta': beta,
-            'return_stability': stability,
-            'volatility': volatility,
-            'num_days': len(ticker_df),
-            'avg_return': np.mean(returns) * 252,  # Annualized
-        })
+        # Free memory after each batch
+        gc.collect()
     
     df_metrics = pd.DataFrame(ticker_metrics)
     logger.info(f"  [OK] Calculated metrics for {len(df_metrics):,} tickers")
@@ -295,6 +345,12 @@ def run_low_beta_quality() -> pd.DataFrame:
     
     # Build portfolio
     df_portfolio = build_low_beta_quality_portfolio(df_prices, spy_returns, df_economic)
+    
+    # Free memory after processing
+    del df_prices
+    del spy_returns
+    gc.collect()
+    logger.info("[OK] Freed raw data from memory")
     
     if len(df_portfolio) == 0:
         logger.error("[ERROR] Failed to build portfolio")

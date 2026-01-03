@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 import pandas as pd
 import numpy as np
+import gc
 
 from config import SILVER_DIR, GOLD_DIR, LOG_FORMAT
 
@@ -43,22 +44,47 @@ SILVER_PARQUET_PATH = SILVER_DIR / 'enriched_stocks.parquet'
 GOLD_LAKEHOUSE_PATH = GOLD_DIR / 'analytics_lakehouse'
 GOLD_METRICS_PATH = GOLD_DIR / 'metrics_lakehouse'
 
+# Memory optimization: columns required for sector analysis
+REQUIRED_COLUMNS = ['ticker', 'date', 'close', 'daily_return', 'sector', 'volume']
+
 
 # =============================================================================
 # LOAD DATA
 # =============================================================================
 def load_silver_data() -> pd.DataFrame:
-    """Load data from Silver layer"""
-    from utils import is_lakehouse_table, lakehouse_to_pandas
+    """Load data from Silver layer - MEMORY OPTIMIZED"""
+    import duckdb
+    from utils import is_lakehouse_table, get_metadata_path
+    import json
+    
+    logger.info("Loading Silver data (MEMORY OPTIMIZED)...")
+    logger.info(f"  Loading only columns: {REQUIRED_COLUMNS}")
     
     if is_lakehouse_table(SILVER_LAKEHOUSE_PATH):
         logger.info(f"Loading from Silver Lakehouse: {SILVER_LAKEHOUSE_PATH}")
-        return lakehouse_to_pandas(SILVER_LAKEHOUSE_PATH)
-    elif SILVER_PARQUET_PATH.exists():
+        meta_path = get_metadata_path(SILVER_LAKEHOUSE_PATH)
+        with open(meta_path, 'r') as f:
+            metadata = json.load(f)
+        
+        if metadata['versions']:
+            version_info = metadata['versions'][-1]
+            data_file = SILVER_LAKEHOUSE_PATH / version_info['file']
+            
+            cols_str = ", ".join(REQUIRED_COLUMNS)
+            con = duckdb.connect()
+            df = con.execute(f"SELECT {cols_str} FROM read_parquet('{data_file}')").fetchdf()
+            con.close()
+            
+            logger.info(f"  Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
+            return df
+    
+    if SILVER_PARQUET_PATH.exists():
         logger.info(f"Loading from Silver Parquet: {SILVER_PARQUET_PATH}")
-        return pd.read_parquet(SILVER_PARQUET_PATH)
-    else:
-        raise FileNotFoundError("No Silver data found")
+        df = pd.read_parquet(SILVER_PARQUET_PATH, columns=REQUIRED_COLUMNS)
+        logger.info(f"  Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
+        return df
+    
+    raise FileNotFoundError("No Silver data found")
 
 
 # =============================================================================

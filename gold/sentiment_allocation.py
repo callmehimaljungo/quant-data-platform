@@ -27,6 +27,7 @@ from datetime import datetime
 from typing import Dict, Tuple
 import pandas as pd
 import numpy as np
+import gc
 
 from config import SILVER_DIR, GOLD_DIR, LOG_FORMAT
 
@@ -37,9 +38,13 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # =============================================================================
 SILVER_PARQUET = SILVER_DIR / 'enriched_stocks.parquet'
+SILVER_LAKEHOUSE_PATH = SILVER_DIR / 'enriched_lakehouse'
 ECONOMIC_PATH = SILVER_DIR / 'economic_lakehouse'
 NEWS_PATH = SILVER_DIR / 'news_lakehouse'
 OUTPUT_PATH = GOLD_DIR / 'sentiment_allocation_lakehouse'
+
+# Memory optimization: Only load required columns
+REQUIRED_COLUMNS = ['ticker', 'date', 'close', 'daily_return', 'sector']
 
 # Thông số chiến lược
 TOP_N_STOCKS = 30           # Số cổ phiếu trong danh mục
@@ -279,11 +284,40 @@ def run_sentiment_allocation() -> pd.DataFrame:
     # Load data
     logger.info("Loading data from Silver layer...")
     
-    if SILVER_PARQUET.exists():
-        df_prices = pd.read_parquet(SILVER_PARQUET)
-        logger.info(f"  [OK] Prices: {len(df_prices):,} rows")
-    else:
-        raise FileNotFoundError(f"Price data not found: {SILVER_PARQUET}")
+    # Load data - MEMORY OPTIMIZED
+    logger.info("Loading data from Silver layer (MEMORY OPTIMIZED)...")
+    logger.info(f"  Loading only columns: {REQUIRED_COLUMNS}")
+    
+    import duckdb
+    from utils import get_metadata_path
+    import json
+    
+    df_prices = None
+    
+    if is_lakehouse_table(SILVER_LAKEHOUSE_PATH):
+        logger.info(f"  Loading from Silver Lakehouse: {SILVER_LAKEHOUSE_PATH}")
+        meta_path = get_metadata_path(SILVER_LAKEHOUSE_PATH)
+        with open(meta_path, 'r') as f:
+            metadata = json.load(f)
+        
+        if metadata['versions']:
+            version_info = metadata['versions'][-1]
+            data_file = SILVER_LAKEHOUSE_PATH / version_info['file']
+            
+            cols_str = ", ".join(REQUIRED_COLUMNS)
+            con = duckdb.connect()
+            df_prices = con.execute(f"SELECT {cols_str} FROM read_parquet('{data_file}')").fetchdf()
+            con.close()
+    
+    if df_prices is None and SILVER_PARQUET.exists():
+        logger.info(f"  Loading from Silver Parquet: {SILVER_PARQUET}")
+        df_prices = pd.read_parquet(SILVER_PARQUET, columns=REQUIRED_COLUMNS)
+    
+    if df_prices is None:
+        raise FileNotFoundError(f"Price data not found")
+    
+    logger.info(f"  [OK] Prices: {len(df_prices):,} rows")
+    logger.info(f"  Memory usage: {df_prices.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
     
     if is_lakehouse_table(ECONOMIC_PATH):
         df_economic = lakehouse_to_pandas(ECONOMIC_PATH)

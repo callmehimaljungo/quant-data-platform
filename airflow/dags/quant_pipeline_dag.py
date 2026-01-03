@@ -1,6 +1,7 @@
 """
 Airflow DAG: Quant Data Pipeline
 Orchestrates Bronze → Silver → Gold data processing
+With R2 cloud sync support
 """
 
 from datetime import datetime, timedelta
@@ -22,6 +23,25 @@ default_args = {
 # =============================================================================
 # TASK FUNCTIONS
 # =============================================================================
+
+def download_from_r2(**context):
+    """Download latest data from R2 before processing (for VM/cloud runs)"""
+    import sys
+    import os
+    sys.path.insert(0, '/opt/airflow/project')
+    
+    # Check if R2 is configured
+    if not os.environ.get('R2_ENDPOINT'):
+        return "R2 not configured, skipping download"
+    
+    try:
+        from utils.r2_sync import download_bronze_from_r2
+        from config import BRONZE_DIR
+        download_bronze_from_r2(BRONZE_DIR)
+        return "Downloaded Bronze from R2"
+    except Exception as e:
+        return f"R2 download skipped: {e}"
+
 
 def fetch_stock_prices(**context):
     """Bronze: Fetch latest stock prices from yfinance"""
@@ -110,12 +130,22 @@ def upload_to_r2(**context):
 with DAG(
     dag_id='quant_data_pipeline',
     default_args=default_args,
-    description='Daily data pipeline: Bronze → Silver → Gold',
+    description='Daily data pipeline: Bronze → Silver → Gold (R2 sync)',
     schedule_interval='0 8 * * *',  # Run at 8:00 AM daily
     start_date=days_ago(1),
     catchup=False,
-    tags=['quant', 'data-pipeline', 'medallion'],
+    tags=['quant', 'data-pipeline', 'medallion', 'r2'],
 ) as dag:
+    
+    # =========================================================================
+    # SYNC FROM R2 (Optional, for VM runs)
+    # =========================================================================
+    
+    task_download_r2 = PythonOperator(
+        task_id='download_from_r2',
+        python_callable=download_from_r2,
+        doc='Download latest Bronze from R2 (for VM runs)',
+    )
     
     # =========================================================================
     # BRONZE LAYER TASKS (Data Ingestion)
@@ -185,17 +215,21 @@ with DAG(
     # TASK DEPENDENCIES (DAG Structure)
     # =========================================================================
     
-    # Bronze layer (parallel ingestion)
-    [task_fetch_prices, task_fetch_economic, task_fetch_news]
+    # Step 0: Download from R2 (optional, for VM)
+    # This runs first but doesn't block if R2 not configured
     
-    # Bronze → Silver
+    # Step 1: Bronze ingestion (after R2 download)
+    task_download_r2 >> [task_fetch_prices, task_fetch_economic, task_fetch_news]
+    
+    # Step 2: Bronze → Silver
     task_fetch_prices >> task_clean_enrich
     task_fetch_economic >> task_clean_enrich
     task_fetch_news >> task_process_news
     
-    # Silver → Gold
+    # Step 3: Silver → Gold
     [task_clean_enrich, task_process_news] >> task_risk_metrics
     task_risk_metrics >> task_strategies
     
-    # Gold → Upload
+    # Step 4: Gold → Upload to R2
     task_strategies >> task_upload_r2
+

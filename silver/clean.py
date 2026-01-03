@@ -82,20 +82,34 @@ def load_bronze_data(columns: list = None, sample_tickers: int = None) -> pd.Dat
     # Read metadata first to get info
     parquet_file = pq.ParquetFile(bronze_path)
     total_rows = parquet_file.metadata.num_rows
+    file_columns = parquet_file.schema.names
     logger.info(f"[INFO] Total rows in file: {total_rows:,}")
+    logger.info(f"[INFO] Columns in file: {file_columns}")
     
     # Define columns to load (only essential ones to save memory)
-    if columns is None:
-        columns = ['Date', 'Ticker', 'Open', 'High', 'Low', 'Close', 'Volume']
+    # We normalized to lowercase in Bronze, but let's be flexible
+    required_cols = ['date', 'ticker', 'open', 'high', 'low', 'close', 'volume']
     
+    # Map required columns to actual file columns (case-insensitive find)
+    actual_columns = []
+    for req in required_cols:
+        match = next((c for c in file_columns if c.lower() == req.lower()), None)
+        if match:
+            actual_columns.append(match)
+        else:
+            logger.warning(f"Required column '{req}' not found in file")
+            
     # Read with PyArrow (more memory efficient than pandas directly)
-    logger.info(f"[INFO] Loading columns: {columns}")
-    table = parquet_file.read(columns=columns)
+    logger.info(f"[INFO] Loading columns: {actual_columns}")
+    table = parquet_file.read(columns=actual_columns)
     df = table.to_pandas()
+    
+    # Rename to standard lowercase if needed
+    df.columns = [c.lower() for c in df.columns]
     
     # Sample tickers if requested (for testing)
     if sample_tickers:
-        ticker_col = 'Ticker' if 'Ticker' in df.columns else 'ticker'
+        ticker_col = 'ticker'
         unique_tickers = df[ticker_col].unique()
         if len(unique_tickers) > sample_tickers:
             import random
@@ -239,24 +253,54 @@ def calculate_daily_return(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_sector_info(df: pd.DataFrame) -> pd.DataFrame:
-    """Add sector from metadata if available."""
-    metadata_file = METADATA_DIR / 'ticker_metadata.parquet'
+    """Add sector from metadata if available.
     
+    Looks for sector data in:
+    1. METADATA_DIR / 'ticker_metadata.parquet' (preferred)
+    2. BRONZE_DIR / 'stock_metadata_lakehouse' (fallback)
+    """
+    from utils import is_lakehouse_table, lakehouse_to_pandas
+    
+    metadata = None
+    
+    # Option 1: Check ticker_metadata.parquet
+    metadata_file = METADATA_DIR / 'ticker_metadata.parquet'
     if metadata_file.exists():
-        logger.info("Loading sector metadata...")
+        logger.info("Loading sector metadata from ticker_metadata.parquet...")
         metadata = pd.read_parquet(metadata_file)
-        
+    
+    # Option 2: Fallback to stock_metadata_lakehouse
+    if metadata is None or len(metadata) == 0:
+        lakehouse_path = BRONZE_DIR / 'stock_metadata_lakehouse'
+        if is_lakehouse_table(lakehouse_path):
+            logger.info("Loading sector metadata from stock_metadata_lakehouse...")
+            metadata = lakehouse_to_pandas(lakehouse_path)
+    
+    # Apply metadata if available
+    if metadata is not None and len(metadata) > 0:
         if 'ticker' in metadata.columns and 'sector' in metadata.columns:
+            # Ensure we have the required columns
+            merge_cols = ['ticker', 'sector']
+            if 'industry' in metadata.columns:
+                merge_cols.append('industry')
+            
             df = df.merge(
-                metadata[['ticker', 'sector', 'industry']],
+                metadata[merge_cols],
                 on='ticker',
                 how='left'
             )
             df['sector'] = df['sector'].fillna('Unknown')
-            df['industry'] = df['industry'].fillna('Unknown')
-            logger.info(f"[OK] Added sector info for {df['sector'].nunique()} unique sectors")
+            if 'industry' not in df.columns:
+                df['industry'] = 'Unknown'
+            else:
+                df['industry'] = df['industry'].fillna('Unknown')
+            
+            known_sectors = df[df['sector'] != 'Unknown']['sector'].nunique()
+            logger.info(f"[OK] Added sector info for {known_sectors} unique sectors")
+            logger.info(f"    Tickers with sector: {(df['sector'] != 'Unknown').sum():,}")
+            logger.info(f"    Tickers without sector: {(df['sector'] == 'Unknown').sum():,}")
         else:
-            logger.warning("[WARN]  Metadata file missing 'ticker' or 'sector' columns")
+            logger.warning("[WARN] Metadata missing 'ticker' or 'sector' columns")
             df['sector'] = 'Unknown'
             df['industry'] = 'Unknown'
     else:

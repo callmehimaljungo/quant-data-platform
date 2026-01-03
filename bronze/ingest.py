@@ -25,11 +25,15 @@ except ImportError:
     print("boto3 not installed - R2 support disabled")
 
 try:
-    import kaggle
-    KAGGLE_AVAILABLE = True
-except ImportError:
+    # Check for credentials before import to avoid sys.exit()
+    kaggle_path = os.path.expanduser('~/.kaggle/kaggle.json')
+    if os.path.exists(kaggle_path):
+        import kaggle
+        KAGGLE_AVAILABLE = True
+    else:
+        KAGGLE_AVAILABLE = False
+except Exception:
     KAGGLE_AVAILABLE = False
-    print("kaggle not installed - Kaggle support disabled")
 
 # Logging
 # -----------------------------------------------------------------------------
@@ -344,60 +348,181 @@ def validate_schema(df: pd.DataFrame) -> None:
 # =============================================================================
 # UNIFIED INGESTION FUNCTION
 # =============================================================================
-def ingest_all_stocks(source: str = 'auto') -> pd.DataFrame:
-    """Main ingestion with auto source detection."""
+# =============================================================================
+# YFINANCE INGESTION (NEW - LOCAL FALLBACK)
+# =============================================================================
+def ingest_from_yfinance() -> pd.DataFrame:
+    """Download stock data using yfinance (no key required)."""
+    try:
+        import yfinance as yf
+    except ImportError:
+        raise ImportError("yfinance not installed. pip install yfinance")
+        
     start_time = datetime.now()
+    logger.info("=" * 70)
+    logger.info("BRONZE LAYER INGESTION FROM YFINANCE")
+    logger.info("=" * 70)
+    
+    # Default list of tickers if no universe
+    default_tickers = [
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', # Tech
+        'JPM', 'BAC', 'GS', 'V', 'MA',                           # Finance
+        'JNJ', 'PFE', 'UNH', 'LLY',                              # Pharma
+        'XOM', 'CVX', 'COP',                                     # Energy
+        'PG', 'KO', 'PEP', 'WMT', 'COST',                        # Consumer
+        'SPY', 'QQQ', 'IWM'                                      # ETFs
+    ]
     
     try:
-        # Auto-detect source
-        if source == 'auto':
-            if KAGGLE_AVAILABLE:
-                logger.info(" Auto-detect: Using Kaggle as primary source")
-                source = 'kaggle'
-            elif R2_AVAILABLE and os.environ.get('R2_ENDPOINT'):
-                logger.info(" Auto-detect: Using R2 as fallback source")
-                source = 'r2'
-            else:
-                raise ValueError(
-                    "No data source available. Please install either:\n"
-                    "  - kaggle: pip install kaggle\n"
-                    "  - boto3: pip install boto3 (and configure R2)"
-                )
+        # Try to get universe, else use default
+        try:
+            from utils.ticker_universe import get_universe
+            universe = get_universe()
+            tickers = list(universe.get_union())
+            if not tickers:
+                tickers = default_tickers
+        except:
+            tickers = default_tickers
+            
+        logger.info(f"Fetching data for {len(tickers)} tickers...")
+        logger.info(f"Sample: {tickers[:5]}")
         
-        # Ingest from selected source
-        if source == 'kaggle':
-            df = ingest_from_kaggle()
-        elif source == 'r2':
-            df = ingest_from_r2()
+        # Download 2 years of data
+        data = yf.download(
+            tickers, 
+            period="2y",
+            group_by='ticker',
+            progress=False,
+            threads=True
+        )
+        
+        # Reshape data to long format [Date, Ticker, Open, High, Low, Close, Volume]
+        records = []
+        if len(tickers) == 1:
+            ticker = tickers[0]
+            df = data
+            for ts, row in df.iterrows():
+                records.append({
+                    'date': ts,
+                    'ticker': ticker,
+                    'open': float(row['Open']),
+                    'high': float(row['High']),
+                    'low': float(row['Low']),
+                    'close': float(row['Close']),
+                    'volume': int(row['Volume'])
+                })
         else:
-            raise ValueError(f"Unknown source: {source}. Use 'kaggle', 'r2', or 'auto'")
+            for ticker in tickers:
+                try:
+                    df = data[ticker].dropna()
+                    if df.empty: continue
+                    
+                    for ts, row in df.iterrows():
+                        # yfinance returns float64, perfect
+                        records.append({
+                            'date': ts,
+                            'ticker': ticker,
+                            'open': float(row['Open']),
+                            'high': float(row['High']),
+                            'low': float(row['Low']),
+                            'close': float(row['Close']),
+                            'volume': int(row['Volume'])
+                        })
+                except Exception as e:
+                    logger.warning(f"Error processing {ticker}: {e}")
+                    
+        df_all = pd.DataFrame(records)
         
-        # Add ingestion metadata
-        df['ingested_at'] = datetime.now()
-        logger.info(f"[OK] Added ingestion timestamp: {df['ingested_at'].iloc[0]}")
+        # Normalize columns
+        df_all['date'] = pd.to_datetime(df_all['date'])
         
-        # Validate schema
-        logger.info("Running schema validation...")
-        validate_schema(df)
-        
-        # Success summary
         duration = (datetime.now() - start_time).total_seconds()
-        logger.info("=" * 70)
-        logger.info(f" BRONZE LAYER INGESTION COMPLETED SUCCESSFULLY ")
-        logger.info(f"Duration: {duration:.2f} seconds")
-        logger.info(f"Total rows: {len(df):,}")
-        logger.info(f"Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
-        logger.info("=" * 70)
+        logger.info(f"[OK] Ingested {len(df_all):,} rows from yfinance")
+        logger.info(f"Duration: {duration:.2f} s")
         
-        return df
+        if df_all.empty:
+            raise ValueError("No data returned from yfinance")
+            
+        return df_all
         
     except Exception as e:
-        duration = (datetime.now() - start_time).total_seconds()
-        logger.error("=" * 70)
-        logger.error(f"[ERR] BRONZE LAYER INGESTION FAILED after {duration:.2f} seconds")
-        logger.error(f"Error: {str(e)}")
-        logger.error("=" * 70)
+        logger.error(f"YFinance ingestion failed: {e}")
         raise
+
+
+def ingest_all_stocks(source: str = 'auto') -> pd.DataFrame:
+    """Main ingestion with auto source detection and fallback."""
+    start_time = datetime.now()
+    
+    # Define priority list based on availability
+    sources_to_try = []
+    
+    if source != 'auto':
+        sources_to_try.append(source)
+    else:
+        # Priority: Kaggle (best data) -> R2 (cloud cache) -> YFinance (live/fallback)
+        if KAGGLE_AVAILABLE and os.path.exists(os.path.expanduser('~/.kaggle/kaggle.json')):
+            sources_to_try.append('kaggle')
+        
+        if R2_AVAILABLE and os.environ.get('R2_ENDPOINT'):
+            sources_to_try.append('r2')
+            
+        sources_to_try.append('yfinance')
+    
+    last_error = None
+    
+    for current_source in sources_to_try:
+        try:
+            logger.info(f"Attempting ingestion from: {current_source.upper()}")
+            
+            if current_source == 'kaggle':
+                df = ingest_from_kaggle()
+            elif current_source == 'r2':
+                df = ingest_from_r2()
+            elif current_source == 'yfinance':
+                df = ingest_from_yfinance()
+            else:
+                raise ValueError(f"Unknown source: {current_source}")
+            
+            # If successful
+            df['ingested_at'] = datetime.now()
+            
+            # Validate schema
+            logger.info("Running schema validation...")
+            df.columns = [c.lower() for c in df.columns]
+            if 'ticker' not in df.columns and 'symbol' in df.columns:
+                df = df.rename(columns={'symbol': 'ticker'})
+            
+            for col in REQUIRED_COLUMNS:
+                if col not in df.columns:
+                    if col.capitalize() in df.columns:
+                        df = df.rename(columns={col.capitalize(): col})
+            
+            validate_schema(df)
+            
+            # Success
+            duration = (datetime.now() - start_time).total_seconds()
+            logger.info("=" * 70)
+            logger.info(f" BRONZE LAYER INGESTION COMPLETED ({current_source.upper()}) ")
+            logger.info(f"Duration: {duration:.2f} seconds")
+            logger.info(f"Total rows: {len(df):,}")
+            logger.info(f"Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
+            logger.info("=" * 70)
+            
+            return df
+            
+        except Exception as e:
+            logger.warning(f"Failed to ingest from {current_source}: {e}")
+            last_error = e
+            continue
+    
+    # If all failed
+    duration = (datetime.now() - start_time).total_seconds()
+    logger.error("=" * 70)
+    logger.error(f"[ERR] ALL INGESTION ATTEMPTS FAILED after {duration:.2f} seconds")
+    logger.error(f"Last error: {str(last_error)}")
+    logger.error("=" * 70)
+    raise last_error
 
 
 def save_to_bronze(df: pd.DataFrame, output_path: str = OUTPUT_PATH) -> None:
@@ -433,18 +558,54 @@ def main():
     
     # Get source from command line argument
     source = sys.argv[1] if len(sys.argv) > 1 else 'auto'
+    upload_r2 = '--upload-r2' in sys.argv
+    realtime = '--realtime' in sys.argv
     
     logger.info("")
     logger.info(" BRONZE LAYER INGESTION")
     logger.info(f" Data Source: {source}")
+    logger.info(f" Upload to R2: {upload_r2}")
+    logger.info(f" Real-time Mode: {realtime}")
     logger.info("")
     
+    # Handle real-time loop first
+    if realtime:
+        try:
+            # Ensure project root is in path
+            import sys
+            from pathlib import Path
+            root_dir = Path(__file__).resolve().parent.parent
+            if str(root_dir) not in sys.path:
+                sys.path.insert(0, str(root_dir))
+                
+            from utils.realtime_sync import run_realtime_loop
+            logger.info("Starting real-time ingestion loop...")
+            # Run loop (infinite or until stopped)
+            run_realtime_loop() 
+            return 0
+        except KeyboardInterrupt:
+            logger.info("Stopped by user.")
+            return 0
+        except Exception as e:
+            logger.error(f"Real-time loop failed: {e}")
+            return 1
+
     try:
-        # Ingest data
+        # Normal (Batch) Ingestion
         df = ingest_all_stocks(source=source)
         
-        # Save to Bronze layer
+        # Save to Bronze layer (local)
         save_to_bronze(df)
+        
+        # Upload to R2 if requested
+        if upload_r2:
+            try:
+                from utils.r2_sync import upload_bronze_to_r2
+                from pathlib import Path
+                bronze_dir = Path(OUTPUT_PATH).parent
+                upload_bronze_to_r2(bronze_dir)
+            except Exception as e:
+                logger.warning(f"[WARN] R2 upload failed (data saved locally): {e}")
         
         logger.info("")
         logger.info("[OK] Bronze layer ingestion completed successfully!")

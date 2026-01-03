@@ -97,8 +97,16 @@ SECTOR_ALIASES = {
 MARKET_CAP_THRESHOLDS = {
     'Large': 10_000_000_000,   # > $10B
     'Mid': 2_000_000_000,      # $2B - $10B
+    'Mid': 2_000_000_000,      # $2B - $10B
     'Small': 0                 # < $2B
 }
+
+# =============================================================================
+# REAL-TIME CONFIGURATION
+# =============================================================================
+REALTIME_PRICE_INTERVAL = 300   # 5 minutes
+REALTIME_NEWS_INTERVAL = 900    # 15 minutes
+REALTIME_MAX_ITERATIONS = None  # Infinite loop (or set int for testing)
 
 # =============================================================================
 # QUALITY GATES 
