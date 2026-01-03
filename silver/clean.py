@@ -167,8 +167,6 @@ def load_partitioned_bronze(
         end_date: End date filter (YYYY-MM-DD)
         sample_tickers: Number of tickers to sample
     """
-    import pyarrow.dataset as ds
-    
     # Get all partition directories
     partition_dirs = sorted([d for d in partition_dir.iterdir() if d.is_dir() and d.name.startswith('date=')])
     
@@ -190,27 +188,25 @@ def load_partitioned_bronze(
         partition_dirs = filtered_dirs
         logger.info(f"Filtered to {len(partition_dirs)} partitions ({start_date} to {end_date})")
     
-    # Use PyArrow dataset for efficient reading
-    dataset = ds.dataset(partition_dir, format='parquet', partitioning='hive')
+    # Load partitions in batches
+    dfs = []
+    for i, partition_dir_path in enumerate(partition_dirs):
+        parquet_files = list(partition_dir_path.glob('*.parquet'))
+        if not parquet_files:
+            continue
+        
+        # Read partition
+        df_partition = pd.read_parquet(parquet_files[0], columns=columns)
+        dfs.append(df_partition)
+        
+        if (i + 1) % 100 == 0:
+            logger.info(f"  Loaded {i + 1}/{len(partition_dirs)} partitions")
     
-    # Build filter expression
-    filters = []
-    if start_date:
-        filters.append(ds.field('date') >= pd.to_datetime(start_date))
-    if end_date:
-        filters.append(ds.field('date') <= pd.to_datetime(end_date))
+    if not dfs:
+        return pd.DataFrame()
     
-    # Read with filters
-    if filters:
-        # Combine filters with AND
-        combined_filter = filters[0]
-        for f in filters[1:]:
-            combined_filter = combined_filter & f
-        table = dataset.to_table(columns=columns, filter=combined_filter)
-    else:
-        table = dataset.to_table(columns=columns)
-    
-    df = table.to_pandas()
+    # Combine all partitions
+    df = pd.concat(dfs, ignore_index=True)
     
     # Normalize column names
     df.columns = [c.lower() for c in df.columns]

@@ -27,14 +27,25 @@ logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
 
-def run_all_strategies():
-    """Run all 3 portfolio strategies and generate summary"""
+def run_all_strategies(start_date: str = None, end_date: str = None, quick_update: bool = False):
+    """
+    Run all 3 portfolio strategies and generate summary.
+    
+    Args:
+        start_date: Optional start date for incremental processing (YYYY-MM-DD)
+        end_date: Optional end date for incremental processing (YYYY-MM-DD)
+        quick_update: If True, skip heavy backtesting (for realtime updates)
+    """
     
     start_time = datetime.now()
     
     logger.info("")
     logger.info("=" * 70)
     logger.info("GOLD LAYER: RUNNING ALL PORTFOLIO STRATEGIES")
+    if start_date or end_date:
+        logger.info(f"  Mode: INCREMENTAL ({start_date} to {end_date})")
+    if quick_update:
+        logger.info("  Mode: QUICK UPDATE (skip backtesting)")
     logger.info("=" * 70)
     logger.info("")
     
@@ -50,7 +61,7 @@ def run_all_strategies():
         logger.info("[OK] Strategy 1 completed")
     except Exception as e:
         logger.error(f"[ERROR] Strategy 1 failed: {e}")
-        results['low_beta_quality'] = pd.DataFrame()
+        results['low_beta_quality'] = None
     
     logger.info("")
     
@@ -64,42 +75,20 @@ def run_all_strategies():
         logger.info("[OK] Strategy 2 completed")
     except Exception as e:
         logger.error(f"[ERROR] Strategy 2 failed: {e}")
-        results['sector_rotation'] = pd.DataFrame()
+        results['sector_rotation'] = None
     
     logger.info("")
     
-    # Strategy 3: Sentiment-Adjusted
+    # Strategy 3: Sentiment Allocation
     logger.info("-" * 70)
-    logger.info("STRATEGY 3: SENTIMENT-ADJUSTED")
+    logger.info("STRATEGY 3: SENTIMENT-ADJUSTED ALLOCATION")
     logger.info("-" * 70)
     try:
         from gold.sentiment_allocation import run_sentiment_allocation
-        results['sentiment_adjusted'] = run_sentiment_allocation()
+        results['sentiment_allocation'] = run_sentiment_allocation()
         logger.info("[OK] Strategy 3 completed")
     except Exception as e:
         logger.error(f"[ERROR] Strategy 3 failed: {e}")
-        results['sentiment_adjusted'] = pd.DataFrame()
-    
-    # Generate Combined Summary
-    logger.info("")
-    logger.info("=" * 70)
-    logger.info("COMBINED PORTFOLIO SUMMARY")
-    logger.info("=" * 70)
-    
-    summary_rows = []
-    
-    for strategy_name, df in results.items():
-        if len(df) > 0:
-            summary_rows.append({
-                'strategy': strategy_name,
-                'num_stocks': len(df),
-                'sectors': df['sector'].nunique() if 'sector' in df.columns else 0,
-                'total_weight': df['weight'].sum() if 'weight' in df.columns else 0,
-            })
-    
-    df_summary = pd.DataFrame(summary_rows)
-    
-    if len(df_summary) > 0:
         print("\n--- STRATEGY SUMMARY ---")
         print(df_summary.to_string(index=False))
     
@@ -139,6 +128,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='Gold Layer - Run All Strategies')
     parser.add_argument('--quick-update', '-q', action='store_true',
                         help='Quick update mode: skip heavy backtesting, just update weights')
+    parser.add_argument('--start-date', '-s', type=str, default=None,
+                        help='Start date for incremental processing (YYYY-MM-DD)')
+    parser.add_argument('--end-date', '-e', type=str, default=None,
+                        help='End date for incremental processing (YYYY-MM-DD)')
     args = parser.parse_args()
     
     try:
@@ -150,7 +143,11 @@ def main() -> int:
             logger.info("  Skipping heavy backtesting, updating portfolio weights only")
             logger.info("")
         
-        run_all_strategies()
+        run_all_strategies(
+            start_date=args.start_date,
+            end_date=args.end_date,
+            quick_update=args.quick_update
+        )
         
         if not args.quick_update:
             logger.info("")
