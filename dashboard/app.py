@@ -54,8 +54,19 @@ st.set_page_config(
 # =============================================================================
 # DATA LOADING
 # =============================================================================
-@st.cache_data(ttl=3600)
-def load_risk_metrics() -> pd.DataFrame:
+def get_cache_key() -> str:
+    """
+    Get cache key based on refresh trigger file.
+    Returns timestamp of last refresh, forcing cache invalidation.
+    """
+    trigger_file = GOLD_DIR / '.refresh_trigger'
+    if trigger_file.exists():
+        return str(trigger_file.stat().st_mtime)
+    return "default"
+
+
+@st.cache_data(ttl=300)  # Reduced to 5 mins for realtime feel
+def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
     """Load risk metrics from Gold layer (R2 first, then local)"""
     
     # Try R2 first
@@ -72,7 +83,7 @@ def load_risk_metrics() -> pd.DataFrame:
     
     for path in possible_paths:
         if path.exists():
-            parquet_files = list(path.glob('*.parquet'))
+            parquet_files = sorted(path.glob('*.parquet'), key=lambda x: x.stat().st_mtime, reverse=True)
             if parquet_files:
                 return pd.read_parquet(parquet_files[0])
     
@@ -80,8 +91,8 @@ def load_risk_metrics() -> pd.DataFrame:
     return create_sample_risk_metrics()
 
 
-@st.cache_data(ttl=3600)
-def load_sector_metrics() -> pd.DataFrame:
+@st.cache_data(ttl=300)
+def load_sector_metrics(_cache_key: str = None) -> pd.DataFrame:
     """Load sector-level metrics (R2 first, then local)"""
     
     # Try R2 first
@@ -98,7 +109,7 @@ def load_sector_metrics() -> pd.DataFrame:
     
     for path in possible_paths:
         if path.exists():
-            parquet_files = list(path.glob('*.parquet'))
+            parquet_files = sorted(path.glob('*.parquet'), key=lambda x: x.stat().st_mtime, reverse=True)
             if parquet_files:
                 return pd.read_parquet(parquet_files[0])
     
@@ -173,9 +184,12 @@ def render_overview():
     """Render overview page"""
     st.title("🏠 Tổng quan Portfolio")
     
-    # Load data
-    risk_df = load_risk_metrics()
-    sector_df = load_sector_metrics()
+    # Get cache key for fresh data
+    cache_key = get_cache_key()
+    
+    # Load data with cache key
+    risk_df = load_risk_metrics(cache_key)
+    sector_df = load_sector_metrics(cache_key)
     
     # KPI Cards
     col1, col2, col3, col4 = st.columns(4)
@@ -255,7 +269,8 @@ def render_risk_metrics():
     """Render risk metrics page"""
     st.title("📈 Bảng Risk Metrics")
     
-    risk_df = load_risk_metrics()
+    cache_key = get_cache_key()
+    risk_df = load_risk_metrics(cache_key)
     
     # Filters
     col1, col2 = st.columns(2)
@@ -334,8 +349,9 @@ def render_sector_analysis():
     """Render sector analysis page"""
     st.title("🏢 Phân tích Sector")
     
-    risk_df = load_risk_metrics()
-    sector_df = load_sector_metrics()
+    cache_key = get_cache_key()
+    risk_df = load_risk_metrics(cache_key)
+    sector_df = load_sector_metrics(cache_key)
     
     # Sector comparison
     st.subheader("📊 So sánh Sector")

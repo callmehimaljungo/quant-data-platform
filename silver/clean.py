@@ -58,13 +58,29 @@ COLUMN_MAPPING = {
 # =============================================================================
 # LOAD DATA
 # =============================================================================
-def load_bronze_data(columns: list = None, sample_tickers: int = None) -> pd.DataFrame:
-    """Load data from Bronze layer with memory optimization.
+def load_bronze_data(
+    columns: list = None, 
+    sample_tickers: int = None,
+    start_date: str = None,
+    end_date: str = None
+) -> pd.DataFrame:
+    """
+    Load data from Bronze layer with memory optimization and partition support.
     
     Args:
         columns: Optional list of columns to load (reduces memory)
         sample_tickers: If set, only load this many random tickers (for testing)
+        start_date: Optional start date filter (YYYY-MM-DD)
+        end_date: Optional end date filter (YYYY-MM-DD)
     """
+    # Check for partitioned Bronze first
+    partitioned_dir = BRONZE_DIR / 'prices_partitioned'
+    
+    if partitioned_dir.exists():
+        logger.info(f"Loading from partitioned Bronze: {partitioned_dir}")
+        return load_partitioned_bronze(partitioned_dir, columns, start_date, end_date, sample_tickers)
+    
+    # Fallback to old single-file format
     if BRONZE_FILE.exists():
         bronze_path = BRONZE_FILE
     elif BRONZE_FILE_ALT.exists():
@@ -76,10 +92,8 @@ def load_bronze_data(columns: list = None, sample_tickers: int = None) -> pd.Dat
     
     logger.info(f"Loading data from {bronze_path}")
     
-    # Use PyArrow for memory-efficient reading
-    import pyarrow.parquet as pq
-    
     # Read metadata first to get info
+    import pyarrow.parquet as pq
     parquet_file = pq.ParquetFile(bronze_path)
     total_rows = parquet_file.metadata.num_rows
     file_columns = parquet_file.schema.names
@@ -88,38 +102,129 @@ def load_bronze_data(columns: list = None, sample_tickers: int = None) -> pd.Dat
     
     # Define columns to load (only essential ones to save memory)
     # We normalized to lowercase in Bronze, but let's be flexible
-    required_cols = ['date', 'ticker', 'open', 'high', 'low', 'close', 'volume']
+    essential_cols = ['date', 'ticker', 'open', 'high', 'low', 'close', 'volume']
     
-    # Map required columns to actual file columns (case-insensitive find)
-    actual_columns = []
-    for req in required_cols:
-        match = next((c for c in file_columns if c.lower() == req.lower()), None)
-        if match:
-            actual_columns.append(match)
-        else:
-            logger.warning(f"Required column '{req}' not found in file")
-            
-    # Read with PyArrow (more memory efficient than pandas directly)
-    logger.info(f"[INFO] Loading columns: {actual_columns}")
-    table = parquet_file.read(columns=actual_columns)
-    df = table.to_pandas()
+    # Map column names (case-insensitive)
+    actual_cols = []
+    for col in essential_cols:
+        for file_col in file_columns:
+            if file_col.lower() == col.lower():
+                actual_cols.append(file_col)
+                break
     
-    # Rename to standard lowercase if needed
+    if columns:
+        # User specified columns - map them too
+        for col in columns:
+            for file_col in file_columns:
+                if file_col.lower() == col.lower() and file_col not in actual_cols:
+                    actual_cols.append(file_col)
+                    break
+    
+    logger.info(f"[INFO] Loading columns: {actual_cols}")
+    
+    # Read with column selection
+    df = pd.read_parquet(bronze_path, columns=actual_cols)
+    
+    # Normalize column names to lowercase
     df.columns = [c.lower() for c in df.columns]
     
-    # Sample tickers if requested (for testing)
+    # Apply date filter if specified
+    if start_date or end_date:
+        df['date'] = pd.to_datetime(df['date'])
+        if start_date:
+            df = df[df['date'] >= pd.to_datetime(start_date)]
+        if end_date:
+            df = df[df['date'] <= pd.to_datetime(end_date)]
+        logger.info(f"[FILTER] Date range: {start_date} to {end_date}, rows: {len(df):,}")
+    
+    # Sample tickers if requested
     if sample_tickers:
-        ticker_col = 'ticker'
-        unique_tickers = df[ticker_col].unique()
+        unique_tickers = df['ticker'].unique()
         if len(unique_tickers) > sample_tickers:
-            import random
-            sampled = random.sample(list(unique_tickers), sample_tickers)
-            df = df[df[ticker_col].isin(sampled)]
-            logger.info(f"[INFO] Sampled {sample_tickers} tickers for testing")
+            sampled = pd.Series(unique_tickers).sample(sample_tickers, random_state=42).tolist()
+            df = df[df['ticker'].isin(sampled)]
+            logger.info(f"[SAMPLE] Sampled {sample_tickers} tickers, rows: {len(df):,}")
     
-    logger.info(f"[OK] Loaded {len(df):,} rows from Bronze layer")
+    logger.info(f"[OK] Loaded {len(df):,} rows, {df['ticker'].nunique():,} tickers")
     logger.info(f"[OK] Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
+    return df
+
+
+def load_partitioned_bronze(
+    partition_dir: Path,
+    columns: list = None,
+    start_date: str = None,
+    end_date: str = None,
+    sample_tickers: int = None
+) -> pd.DataFrame:
+    """
+    Load data from date-partitioned Bronze directory.
     
+    Args:
+        partition_dir: Path to partitioned directory
+        columns: Columns to load
+        start_date: Start date filter (YYYY-MM-DD)
+        end_date: End date filter (YYYY-MM-DD)
+        sample_tickers: Number of tickers to sample
+    """
+    import pyarrow.dataset as ds
+    
+    # Get all partition directories
+    partition_dirs = sorted([d for d in partition_dir.iterdir() if d.is_dir() and d.name.startswith('date=')])
+    
+    if not partition_dirs:
+        raise FileNotFoundError(f"No partitions found in {partition_dir}")
+    
+    logger.info(f"Found {len(partition_dirs)} date partitions")
+    
+    # Filter partitions by date if specified
+    if start_date or end_date:
+        filtered_dirs = []
+        for d in partition_dirs:
+            date_str = d.name.replace('date=', '')
+            if start_date and date_str < start_date:
+                continue
+            if end_date and date_str > end_date:
+                continue
+            filtered_dirs.append(d)
+        partition_dirs = filtered_dirs
+        logger.info(f"Filtered to {len(partition_dirs)} partitions ({start_date} to {end_date})")
+    
+    # Use PyArrow dataset for efficient reading
+    dataset = ds.dataset(partition_dir, format='parquet', partitioning='hive')
+    
+    # Build filter expression
+    filters = []
+    if start_date:
+        filters.append(ds.field('date') >= pd.to_datetime(start_date))
+    if end_date:
+        filters.append(ds.field('date') <= pd.to_datetime(end_date))
+    
+    # Read with filters
+    if filters:
+        # Combine filters with AND
+        combined_filter = filters[0]
+        for f in filters[1:]:
+            combined_filter = combined_filter & f
+        table = dataset.to_table(columns=columns, filter=combined_filter)
+    else:
+        table = dataset.to_table(columns=columns)
+    
+    df = table.to_pandas()
+    
+    # Normalize column names
+    df.columns = [c.lower() for c in df.columns]
+    
+    # Sample tickers if requested
+    if sample_tickers:
+        unique_tickers = df['ticker'].unique()
+        if len(unique_tickers) > sample_tickers:
+            sampled = pd.Series(unique_tickers).sample(sample_tickers, random_state=42).tolist()
+            df = df[df['ticker'].isin(sampled)]
+            logger.info(f"[SAMPLE] Sampled {sample_tickers} tickers")
+    
+    logger.info(f"[OK] Loaded {len(df):,} rows from partitioned Bronze")
+    logger.info(f"[OK] Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
     return df
 
 
@@ -453,15 +558,59 @@ def save_to_silver(df: pd.DataFrame, output_path: Path = OUTPUT_PATH) -> None:
 # =============================================================================
 # MAIN EXECUTION
 # =============================================================================
-def main():
-    """CLI entry point."""
+def main(incremental: bool = False, start_date: str = None):
+    """
+    CLI entry point.
+    
+    Args:
+        incremental: If True, only process data newer than last run
+        start_date: If set, only process data from this date onwards (YYYY-MM-DD)
+    """
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Silver Layer Data Processing')
+    parser.add_argument('--incremental', '-i', action='store_true',
+                        help='Only process new data since last run')
+    parser.add_argument('--start-date', '-s', type=str, default=None,
+                        help='Process data from this date onwards (YYYY-MM-DD)')
+    args = parser.parse_args()
+    
+    # Use args if called from CLI, otherwise use function params
+    incremental = args.incremental or incremental
+    start_date = args.start_date or start_date
+    
     logger.info("")
     logger.info(" SILVER LAYER PROCESSING")
+    if incremental:
+        logger.info(" Mode: INCREMENTAL")
+    if start_date:
+        logger.info(f" Start Date: {start_date}")
     logger.info("")
     
     try:
-        # Process data
+        # Process data (filter by date if specified)
         df = clean_silver_data()
+        
+        # Apply date filter if incremental or start_date specified
+        if start_date and 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+            original_len = len(df)
+            df = df[df['date'] >= pd.to_datetime(start_date)]
+            logger.info(f"[FILTER] Kept {len(df):,} of {original_len:,} rows (from {start_date})")
+        
+        if incremental:
+            # Load existing Silver data and merge
+            existing_path = OUTPUT_PATH
+            if existing_path.exists():
+                logger.info(f"[INCREMENTAL] Loading existing Silver data...")
+                df_existing = pd.read_parquet(existing_path)
+                # Only keep new dates
+                if 'date' in df_existing.columns:
+                    max_existing_date = pd.to_datetime(df_existing['date']).max()
+                    df = df[pd.to_datetime(df['date']) > max_existing_date]
+                    logger.info(f"[INCREMENTAL] Processing {len(df):,} new rows after {max_existing_date.date()}")
+                    # Concat with existing
+                    df = pd.concat([df_existing, df], ignore_index=True)
         
         # Save to Silver layer
         save_to_silver(df)
@@ -470,7 +619,6 @@ def main():
         logger.info("[OK] Silver layer processing completed successfully!")
         logger.info(f"[OK] Output: {OUTPUT_PATH}")
         logger.info("")
-        logger.info("Next step: Run Gold Layer (python gold/sector_analysis.py)")
         return 0
         
     except Exception as e:
@@ -484,3 +632,4 @@ def main():
 
 if __name__ == "__main__":
     exit(main())
+

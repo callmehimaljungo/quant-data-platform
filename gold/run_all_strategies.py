@@ -134,16 +134,32 @@ def run_all_strategies():
 
 
 def main() -> int:
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Gold Layer - Run All Strategies')
+    parser.add_argument('--quick-update', '-q', action='store_true',
+                        help='Quick update mode: skip heavy backtesting, just update weights')
+    args = parser.parse_args()
+    
     try:
+        if args.quick_update:
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("GOLD LAYER: QUICK UPDATE MODE")
+            logger.info("=" * 70)
+            logger.info("  Skipping heavy backtesting, updating portfolio weights only")
+            logger.info("")
+        
         run_all_strategies()
         
-        logger.info("")
-        logger.info("=" * 70)
-        logger.info("NEXT STEPS:")
-        logger.info("  1. Review portfolios in data/gold/")
-        logger.info("  2. Run backtest: python backtest/evaluate.py")
-        logger.info("  3. Launch dashboard: streamlit run dashboard/app.py")
-        logger.info("=" * 70)
+        if not args.quick_update:
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("NEXT STEPS:")
+            logger.info("  1. Review portfolios in data/gold/")
+            logger.info("  2. Run backtest: python backtest/evaluate.py")
+            logger.info("  3. Launch dashboard: streamlit run dashboard/app.py")
+            logger.info("=" * 70)
         
         return 0
     except Exception as e:
@@ -155,3 +171,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     exit(main())
+

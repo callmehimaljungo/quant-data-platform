@@ -104,7 +104,8 @@ MARKET_CAP_THRESHOLDS = {
 # =============================================================================
 # REAL-TIME CONFIGURATION
 # =============================================================================
-REALTIME_PRICE_INTERVAL = 300   # 5 minutes
+# Realtime data ingestion settings
+REALTIME_PRICE_INTERVAL = 900  # 15 minutes (was 300 = 5 mins, reduced for efficiency)
 REALTIME_NEWS_INTERVAL = 900    # 15 minutes
 REALTIME_MAX_ITERATIONS = None  # Infinite loop (or set int for testing)
 

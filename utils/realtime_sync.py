@@ -223,6 +223,75 @@ def save_incremental(df: pd.DataFrame, prefix: str):
     return out_path_parquet
 
 
+
+
+def trigger_silver_processing() -> bool:
+    """
+    Trigger Silver layer processing after Bronze update.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        logger.info("--- [SILVER PROCESSING] ---")
+        
+        # Import and run Silver clean
+        from silver.clean import main as silver_clean_main
+        result_clean = silver_clean_main()
+        
+        # Import and run Silver news processing
+        from silver.process_news import main as silver_news_main
+        result_news = silver_news_main()
+        
+        if result_clean == 0 and result_news == 0:
+            logger.info("[OK] Silver processing completed successfully")
+            return True
+        else:
+            logger.warning(f"[WARN] Silver processing had issues (clean={result_clean}, news={result_news})")
+            return False
+            
+    except Exception as e:
+        logger.error(f"[ERROR] Silver processing failed: {e}")
+        return False
+
+
+def trigger_gold_strategies() -> bool:
+    """
+    Trigger Gold layer strategies after Silver update.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        logger.info("--- [GOLD STRATEGIES] ---")
+        
+        # Import and run all Gold strategies
+        from gold.run_all_strategies import main as gold_main
+        result = gold_main()
+        
+        if result == 0:
+            logger.info("[OK] Gold strategies completed successfully")
+            return True
+        else:
+            logger.warning(f"[WARN] Gold strategies had issues (result={result})")
+            return False
+            
+    except Exception as e:
+        logger.error(f"[ERROR] Gold strategies failed: {e}")
+        return False
+
+
+def refresh_dashboard_cache():
+    """
+    Trigger dashboard cache refresh by touching a marker file.
+    Streamlit will detect this and reload data.
+    """
+    try:
+        from config import GOLD_DIR
+        marker_file = GOLD_DIR / '.refresh_trigger'
+        marker_file.parent.mkdir(parents=True, exist_ok=True)
+        marker_file.touch()
+        logger.info(f"[OK] Dashboard refresh triggered: {marker_file}")
+    except Exception as e:
+        logger.warning(f"[WARN] Dashboard refresh failed: {e}")
+
+
 def run_realtime_loop(
     iterations: Optional[int] = REALTIME_MAX_ITERATIONS,
     price_interval: int = REALTIME_PRICE_INTERVAL,
@@ -259,6 +328,7 @@ def run_realtime_loop(
     
     while True:
         now = time.time()
+        pipeline_updated = False  # Track if we need to run Silver/Gold
         
         # --- PRICE UPDATE ---
         if now - last_price_fetch >= price_interval:
@@ -266,10 +336,7 @@ def run_realtime_loop(
             df_prices = fetch_latest_prices(tickers)
             if not df_prices.empty:
                 save_incremental(df_prices, 'prices')
-                # Upload Bronze (all changes) to R2
-                # We upload the whole dir to be safe or optimize?
-                # upload_bronze_to_r2 handles directory sync
-                upload_bronze_to_r2(BRONZE_DIR)
+                pipeline_updated = True
             last_price_fetch = time.time()
             
         # --- NEWS UPDATE ---
@@ -277,19 +344,33 @@ def run_realtime_loop(
             logger.info("--- [NEWS UPDATE] ---")
             df_news = fetch_latest_news(tickers)
             if not df_news.empty:
-                # News loader saves to lakehouse internally usually, 
-                # but fetch_latest_news calls load_market_news which saves files?
-                # Checking news_loader: load_market_news DOES save text files, 
-                # but returns DF. We should save DF to parquet if needed.
-                # Actually load_market_news does NOT save parquet lakehouse automatically inside the function?
-                # Checked news_loader.py: load_market_news returns DF. 
-                # CLI wrapper calls save_to_lakehouse.
-                # So we must save here.
                 from bronze.news_loader import save_to_lakehouse
                 save_to_lakehouse(df_news)
-                
-                upload_bronze_to_r2(BRONZE_DIR)
+                pipeline_updated = True
             last_news_fetch = time.time()
+        
+        # --- PIPELINE PROCESSING ---
+        if pipeline_updated:
+            logger.info("=== [PIPELINE PROCESSING] ===")
+            
+            # Step 1: Silver Processing
+            silver_success = trigger_silver_processing()
+            
+            # Step 2: Gold Strategies (only if Silver succeeded)
+            if silver_success:
+                gold_success = trigger_gold_strategies()
+                
+                # Step 3: Dashboard Refresh (only if Gold succeeded)
+                if gold_success:
+                    refresh_dashboard_cache()
+                    logger.info("=== [PIPELINE COMPLETE] ===")
+                else:
+                    logger.warning("=== [PIPELINE INCOMPLETE: Gold failed] ===")
+            else:
+                logger.warning("=== [PIPELINE INCOMPLETE: Silver failed] ===")
+            
+            # Upload to R2 after full pipeline
+            upload_bronze_to_r2(BRONZE_DIR)
             
         # Check iteration limit
         if iterations is not None:
