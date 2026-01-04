@@ -215,8 +215,13 @@ def render_sidebar():
     
     # Check cache availability
     cache_dir = GOLD_DIR / 'cache'
-    cache_exists = cache_dir.exists() and any(cache_dir.glob('*.parquet'))
+    # Check specifically for strategy weights or risk metrics
+    cache_files = list(cache_dir.glob('*_weights.parquet')) + list(cache_dir.glob('risk_metrics.parquet'))
+    cache_exists = len(cache_files) > 0
     st.sidebar.markdown(f"Cache: {'✅ Loaded' if cache_exists else '⏳ Building'}")
+    
+    if cache_exists:
+        st.sidebar.caption(f"Files: {len(cache_files)}")
     
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"*{datetime.now().strftime('%d/%m/%Y %H:%M')}*")
@@ -249,27 +254,34 @@ def render_overview():
         )
     
     with col2:
-        avg_sharpe = risk_df['sharpe_ratio'].mean()
+        # Use median to avoid outliers
+        avg_sharpe = risk_df['sharpe_ratio'].median()
         st.metric(
-            "Sharpe Ratio TB",
+            "Sharpe Ratio (Median)",
             f"{avg_sharpe:.2f}",
-            help="Sharpe Ratio trung bình của tất cả ticker"
+            help="Sharpe Ratio (dùng Median để loại bỏ outlier)"
         )
     
     with col3:
-        avg_vol = risk_df['volatility'].mean() * 100
+        # Filter outliers for valid volatility range (0 to 500%)
+        valid_vol = risk_df[risk_df['volatility'] < 5]['volatility']
+        if len(valid_vol) > 0:
+            avg_vol = valid_vol.median() * 100
+        else:
+            avg_vol = 0
+            
         st.metric(
-            "Volatility TB",
+            "Volatility (Median)",
             f"{avg_vol:.1f}%",
-            help="Độ biến động trung bình năm"
+            help="Độ biến động (Median, đã lọc outlier > 500%)"
         )
     
     with col4:
-        avg_mdd = risk_df['max_drawdown'].mean()
+        avg_mdd = risk_df['max_drawdown'].median()
         st.metric(
-            "Max Drawdown TB",
+            "Max Drawdown (Median)",
             f"{avg_mdd:.1f}%",
-            help="Mức sụt giảm tối đa trung bình"
+            help="Mức sụt giảm tối đa (Median)"
         )
     
     st.markdown("---")
