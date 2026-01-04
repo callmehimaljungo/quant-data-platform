@@ -1138,6 +1138,23 @@ def main():
                     print(f"{row['group']:<30} {row['ate_pct']:>+10.4f} {row['p_value']:>10.4f} {sig:>6}")
     
     # =========================================================================
+    # SAVE RESULTS TO LAKEHOUSE
+    # =========================================================================
+    print("\n" + "=" * 70)
+    print("[6] SAVING RESULTS TO LAKEHOUSE")
+    print("=" * 70)
+    
+    from utils import pandas_to_lakehouse
+    output_path = GOLD_DIR / 'causal_analysis_lakehouse'
+    
+    # Save multi-treatment ATE results
+    if 'ate_df' in locals() and not ate_df.empty:
+        pandas_to_lakehouse(ate_df, output_path, mode='overwrite')
+        print(f"  [OK] Saved to {output_path}")
+    else:
+        print("  [SKIP] No ATE results to save")
+    
+    # =========================================================================
     # SUMMARY & TRADING INSIGHTS
     # =========================================================================
     print("\n" + "=" * 70)

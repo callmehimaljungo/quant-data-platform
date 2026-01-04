@@ -147,6 +147,16 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
     if 'avg_volume' not in df.columns:
         df['avg_volume'] = np.random.uniform(1e6, 1e8, len(df))
     
+    # Apply sector metadata to fix Unknown sectors
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from gold.utils import add_sector_metadata
+        if 'ticker' in df.columns:
+            df = add_sector_metadata(df)
+    except Exception as e:
+        pass  # Silently continue if metadata not available
+    
     return df
 
 
@@ -212,7 +222,8 @@ def render_sidebar():
     
     page = st.sidebar.radio(
         "Điều hướng",
-        ["🏠 Tổng quan", "📈 Risk Metrics", "🏢 Phân tích Sector", "🤖 Kết quả Model", "⚙️ Cài đặt"]
+        ["🏠 Tổng quan", "📈 Risk Metrics", "🏢 Phân tích Sector", 
+         "💼 Chiến lược Đầu tư", "🔬 ML Models", "⚙️ Cài đặt"]
     )
     
     st.sidebar.markdown("---")
@@ -502,6 +513,169 @@ def render_settings():
 
 
 # =============================================================================
+# PAGE: ML MODELS
+# =============================================================================
+def render_ml_models():
+    """Render ML Models analysis page"""
+    st.title("🔬 Mô hình Machine Learning")
+    
+    st.markdown("""
+    Trang này hiển thị kết quả từ các mô hình ML bao gồm:
+    - **Causal Analysis**: Phân tích nhân quả VIX → Returns
+    - **Feature Importance**: Xếp hạng các yếu tố dự báo giá
+    """)
+    
+    tab1, tab2 = st.tabs(["📊 Causal Analysis", "🌲 Feature Importance"])
+    
+    with tab1:
+        st.subheader("Phân tích Nhân quả (Causal Analysis)")
+        
+        st.markdown("""
+        **Câu hỏi nghiên cứu**: Yếu tố nào thực sự **GÂY RA** thay đổi lợi nhuận cổ phiếu?
+        
+        **Phương pháp**: Average Treatment Effect (ATE) - điều chỉnh confounders
+        - **Treatment**: Biến độc lập (VIX, News Sentiment, Dollar Index)
+        - **Outcome**: Lợi nhuận cổ phiếu
+        - **Confounders**: Các yếu tố gây nhiễu được kiểm soát
+        """)
+        
+        # Try to load causal results
+        causal_path = GOLD_DIR / 'causal_analysis_lakehouse'
+        
+        if causal_path.exists():
+            parquet_files = list(causal_path.glob('*.parquet'))
+            if parquet_files:
+                df = pd.read_parquet(parquet_files[0])
+                
+                # Clean treatment names for display
+                df['treatment_clean'] = df['treatment'].str.replace('high_', '').str.replace('_', ' ').str.title()
+                df['ate_pct'] = df['adjusted_ate'] * 100
+                
+                # Visualization 1: ATE Bar Chart
+                st.markdown("### 📊 Tác động Nhân quả (ATE)")
+                
+                fig = px.bar(df.sort_values('ate_pct'), 
+                            x='ate_pct', y='treatment_clean',
+                            orientation='h',
+                            color='significant',
+                            color_discrete_map={True: '#00CC96', False: '#EF553B'},
+                            labels={'ate_pct': 'Average Treatment Effect (%)', 
+                                   'treatment_clean': 'Treatment',
+                                   'significant': 'Significant (p<0.05)'},
+                            title='Tác động của các yếu tố lên lợi nhuận cổ phiếu')
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Interpretation
+                st.markdown("### 💡 Giải thích kết quả")
+                
+                for _, row in df.iterrows():
+                    treatment = row['treatment_clean']
+                    ate = row['ate_pct']
+                    p_val = row['p_value']
+                    sig = row['significant']
+                    
+                    if sig:
+                        st.success(f"""
+                        **{treatment}** có tác động **có ý nghĩa thống kê** (p={p_val:.4f})
+                        - Khi {treatment} cao → Lợi nhuận thay đổi **{ate:+.2f}%**
+                        - Đây là mối quan hệ nhân quả đáng tin cậy
+                        """)
+                    else:
+                        st.info(f"""
+                        **{treatment}** không có tác động rõ ràng (p={p_val:.4f})
+                        - ATE = {ate:+.2f}% nhưng không có ý nghĩa thống kê
+                        - Có thể chỉ là tương quan ngẫu nhiên
+                        """)
+                
+                # Research context
+                with st.expander("📚 Bối cảnh Nghiên cứu"):
+                    st.markdown("""
+                    **Causal Inference trong Finance:**
+                    
+                    1. **VIX (Fear Index)**
+                       - Nghiên cứu: Whaley (2000), Bekaert & Hoerova (2014)
+                       - VIX cao thường dự báo volatility tăng, nhưng mối quan hệ nhân quả với returns phức tạp
+                    
+                    2. **News Sentiment**
+                       - Nghiên cứu: Tetlock (2007), Garcia (2013)
+                       - Sentiment có thể dự báo returns ngắn hạn nếu có tác động nhân quả
+                    
+                    3. **Dollar Index**
+                       - Ảnh hưởng đến cổ phiếu xuất khẩu vs nội địa
+                       - Cần phân tích theo sector để thấy rõ
+                    
+                    **Phương pháp ATE:**
+                    - Điều chỉnh confounders để tránh spurious correlation
+                    - P-value < 0.05 = có ý nghĩa thống kê
+                    """)
+                
+                # Raw data
+                with st.expander("View Raw Data"):
+                    st.dataframe(df, use_container_width=True)
+        else:
+            # Show sample/expected output
+            st.info("💡 Chưa có kết quả Causal Analysis. Chạy lệnh:")
+            st.code("python models/causal_model.py")
+            
+            # Show expected structure with research context
+            st.markdown("**Kết quả mong đợi:**")
+            sample_causal = pd.DataFrame({
+                'Treatment': ['News Sentiment', 'VIX', 'Dollar Index'],
+                'ATE (%)': [21.47, 3.33, 2.07],
+                'P-Value': [0.0000, 0.4109, 0.6093],
+                'Significant': ['YES ✓', 'no', 'no'],
+                'Interpretation': [
+                    'Tin tức tích cực → tăng lợi nhuận 21%',
+                    'VIX cao → không rõ ràng',
+                    'Dollar mạnh → không rõ ràng'
+                ]
+            })
+            st.dataframe(sample_causal, use_container_width=True)
+    
+    with tab2:
+        st.subheader("Feature Importance (Random Forest)")
+        st.markdown("Xếp hạng các yếu tố quan trọng nhất trong việc dự đoán hướng giá.")
+        
+        # Try to load feature importance
+        fi_path = GOLD_DIR / 'feature_importance_lakehouse'
+        
+        if fi_path.exists():
+            parquet_files = list(fi_path.glob('*.parquet'))
+            if parquet_files:
+                df = pd.read_parquet(parquet_files[0])
+                
+                # Feature importance bar chart
+                fig = px.bar(df.head(15), x='importance', y='feature', 
+                            orientation='h',
+                            color='importance',
+                            color_continuous_scale='Viridis',
+                            title='Top 15 Features')
+                fig.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig, use_container_width=True)
+                
+                with st.expander("View All Features"):
+                    st.dataframe(df, use_container_width=True)
+        else:
+            st.info("💡 Chưa có kết quả Feature Importance. Chạy lệnh:")
+            st.code("python models/random_forest_selector.py")
+            
+            # Show sample visualization
+            sample_fi = pd.DataFrame({
+                'feature': ['momentum_12m', 'volatility_30d', 'rsi_14', 'vix', 'return_5d', 
+                           'volume_ratio', 'macd', 'sma_cross', 'beta', 'sector'],
+                'importance': [0.18, 0.15, 0.12, 0.10, 0.09, 0.08, 0.07, 0.06, 0.05, 0.04]
+            })
+            
+            fig = px.bar(sample_fi, x='importance', y='feature',
+                        orientation='h', color='importance',
+                        color_continuous_scale='Viridis',
+                        title='Sample Feature Importance')
+            fig.update_layout(yaxis={'categoryorder': 'total ascending'})
+            st.plotly_chart(fig, use_container_width=True)
+
+
+# =============================================================================
 # PAGE: MODEL RESULTS
 # =============================================================================
 @st.cache_data(ttl=3600)
@@ -513,7 +687,7 @@ def load_strategy_results():
     strategy_paths = {
         'Low-Beta Quality': ('processed/gold/low_beta_quality_lakehouse/', 'low_beta_quality_lakehouse'),
         'Sector Rotation': ('processed/gold/sector_rotation_lakehouse/', 'sector_rotation_lakehouse'),
-        'Sentiment Allocation': ('processed/gold/sentiment_allocation_lakehouse/', 'sentiment_allocation_lakehouse'),
+        'Momentum': ('processed/gold/momentum_portfolio_lakehouse/', 'momentum_portfolio_lakehouse'),
     }
     
     for strategy_name, (r2_prefix, local_folder) in strategy_paths.items():
@@ -562,18 +736,19 @@ def create_sample_strategy_results():
         'recommended_action': np.random.choice(['Overweight', 'Neutral', 'Underweight'], len(GICS_SECTORS)),
     })
     
-    sentiment = pd.DataFrame({
-        'ticker': ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'AMD', 'CRM', 'NFLX'],
-        'sentiment_score': np.random.uniform(-0.5, 0.8, 10),
-        'news_count': np.random.randint(5, 50, 10),
+    momentum = pd.DataFrame({
+        'ticker': ['AAPL', 'MSFT', 'NVDA', 'AMD', 'META', 'GOOGL', 'AMZN', 'CRM', 'NFLX', 'TSLA'],
+        'sector': ['Technology', 'Technology', 'Technology', 'Technology', 'Technology',
+                   'Communication Services', 'Consumer Discretionary', 'Technology', 
+                   'Communication Services', 'Consumer Discretionary'],
+        'momentum': np.random.uniform(0.1, 0.5, 10),
         'weight': np.random.dirichlet(np.ones(10)),
-        'signal': np.random.choice(['BUY', 'HOLD', 'SELL'], 10, p=[0.4, 0.4, 0.2]),
     })
     
     return {
         'Low-Beta Quality': low_beta,
         'Sector Rotation': sector_rotation,
-        'Sentiment Allocation': sentiment
+        'Momentum': momentum
     }
 
 
@@ -793,41 +968,33 @@ def render_model_results():
                 else:
                     st.info("No target/momentum data available")
         
-        elif selected_strategy == 'Sentiment Allocation':
-            st.markdown("**Strategy Logic:** Allocate based on news sentiment scores")
-            
-            # Adapter for Real Data
-            if 'sentiment' in df.columns and 'sentiment_score' not in df.columns:
-                df['sentiment_score'] = df['sentiment']
-            
-            if 'sentiment_class' in df.columns and 'signal' not in df.columns:
-                # Map class to signal
-                df['signal'] = df['sentiment_class'].map({
-                    'positive': 'BUY', 
-                    'negative': 'SELL', 
-                    'neutral': 'HOLD'
-                }).fillna('HOLD')
-            elif 'signal' not in df.columns:
-                df['signal'] = 'HOLD'
+        elif selected_strategy == 'Momentum':
+            st.markdown("**Strategy Logic:** 12-1 Momentum - buy top performers (12-month return, skip last month)")
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                if 'sentiment_score' in df.columns:
-                    st.metric("Avg Sentiment", f"{df['sentiment_score'].mean():.2f}")
+                if 'momentum' in df.columns:
+                    st.metric("Avg Momentum", f"{df['momentum'].mean()*100:.1f}%")
+                else:
+                    st.metric("Holdings", len(df))
             with col2:
-                if 'signal' in df.columns:
-                    st.metric("BUY Signals", len(df[df['signal'] == 'BUY']))
+                st.metric("Holdings", len(df))
             with col3:
-                if 'signal' in df.columns:
-                    st.metric("SELL Signals", len(df[df['signal'] == 'SELL']))
+                if 'sector' in df.columns:
+                    st.metric("Sectors", df['sector'].nunique())
             
-            if 'sentiment_score' in df.columns:
-                fig = px.bar(df.sort_values('sentiment_score'), 
-                            x='ticker', y='sentiment_score',
-                            color='signal', 
-                            color_discrete_map={'BUY': 'green', 'HOLD': 'gray', 'SELL': 'red'},
-                            title='Sentiment Scores by Ticker')
-                st.plotly_chart(fig, use_container_width=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                if 'momentum' in df.columns:
+                    fig = px.bar(df.sort_values('momentum', ascending=False), 
+                                x='ticker', y='momentum',
+                                color='momentum', color_continuous_scale='RdYlGn',
+                                title='Momentum Scores (12-1)')
+                    st.plotly_chart(fig, use_container_width=True)
+            with col2:
+                if 'weight' in df.columns:
+                    fig = px.pie(df, values='weight', names='ticker', title='Portfolio Weights')
+                    st.plotly_chart(fig, use_container_width=True)
         
         # Show raw data
         with st.expander("View Raw Data"):
@@ -869,8 +1036,10 @@ def main():
         render_risk_metrics()
     elif page == "🏢 Phân tích Sector":
         render_sector_analysis()
-    elif page == "🤖 Kết quả Model":
+    elif page == "💼 Chiến lược Đầu tư":
         render_model_results()
+    elif page == "🔬 ML Models":
+        render_ml_models()
     elif page == "⚙️ Cài đặt":
         render_settings()
 

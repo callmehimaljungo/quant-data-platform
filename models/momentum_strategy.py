@@ -164,6 +164,10 @@ def run_momentum_strategy(test_mode: bool = False) -> Dict:
     
     portfolio = strategy.build_portfolio(df, ml_predictions)
     
+    # Apply sector metadata to fix Unknown sectors
+    from gold.utils import add_sector_metadata
+    portfolio = add_sector_metadata(portfolio)
+    
     # Save portfolio
     pandas_to_lakehouse(portfolio, OUTPUT_PATH, mode='overwrite')
     logger.info(f"[OK] Saved to {OUTPUT_PATH}")

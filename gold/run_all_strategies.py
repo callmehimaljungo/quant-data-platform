@@ -79,18 +79,24 @@ def run_all_strategies(start_date: str = None, end_date: str = None, quick_updat
     
     logger.info("")
     
-    # Strategy 3: Sentiment Allocation
+    # Strategy 3: Momentum (replaces Sentiment which has no data)
     logger.info("-" * 70)
-    logger.info("STRATEGY 3: SENTIMENT-ADJUSTED ALLOCATION")
+    logger.info("STRATEGY 3: MOMENTUM (12-1)")
     logger.info("-" * 70)
     try:
-        from gold.sentiment_allocation import run_sentiment_allocation
-        results['sentiment_allocation'] = run_sentiment_allocation()
+        from models.momentum_strategy import run_momentum_strategy
+        momentum_result = run_momentum_strategy()
+        # Convert dict result to DataFrame if needed
+        if isinstance(momentum_result, dict):
+            from utils import lakehouse_to_pandas
+            from config import GOLD_DIR
+            results['momentum'] = lakehouse_to_pandas(GOLD_DIR / 'momentum_portfolio_lakehouse')
+        else:
+            results['momentum'] = momentum_result
         logger.info("[OK] Strategy 3 completed")
     except Exception as e:
         logger.error(f"[ERROR] Strategy 3 failed: {e}")
-        print("\n--- STRATEGY SUMMARY ---")
-        print(df_summary.to_string(index=False))
+        results['momentum'] = pd.DataFrame()
     
     # Check for overlapping stocks
     all_tickers = set()
@@ -108,26 +114,11 @@ def run_all_strategies(start_date: str = None, end_date: str = None, quick_updat
     # Update Cache for Dashboard/App (Automatic Sync)
     # -------------------------------------------------------------------------
     logger.info("\nUpdating Dashboard Cache from Lakehouse Results...")
-    import shutil
-    cache_dir = GOLD_DIR / 'cache'
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    from gold.utils import sync_lakehouse_to_cache
+    sync_results = sync_lakehouse_to_cache()
     
-    for strategy in ['low_beta_quality', 'sector_rotation', 'sentiment_allocation']:
-        lakehouse_dir = GOLD_DIR / f'{strategy}_lakehouse'
-        if lakehouse_dir.exists():
-            # Get latest file
-            files = sorted(lakehouse_dir.glob('*.parquet'), key=lambda x: x.stat().st_mtime, reverse=True)
-            if files:
-                dest = cache_dir / f'{strategy}_weights.parquet'
-                try:
-                    shutil.copy2(files[0], dest)
-                    logger.info(f"  [OK] Updated cache for {strategy}")
-                except Exception as e:
-                    logger.error(f"  [FAIL] Failed to update cache for {strategy}: {e}")
-            else:
-                 logger.warning(f"  [WARN] No files found in {lakehouse_dir}")
-        else:
-            logger.warning(f"  [WARN] Lakehouse dir not found: {lakehouse_dir}")
+    success_count = sum(1 for v in sync_results.values() if v)
+    logger.info(f"  Cache sync complete: {success_count}/{len(sync_results)} strategies updated")
 
     
     # Duration
