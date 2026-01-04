@@ -277,6 +277,11 @@ def run_sector_analysis() -> Dict[str, pd.DataFrame]:
     df = load_silver_data()
     logger.info(f"[OK] Loaded {len(df):,} rows from Silver layer")
     
+    # Enrich with Sector Metadata
+    from gold.utils import add_sector_metadata
+    df = add_sector_metadata(df)
+    logger.info(f"Enriched with sector metadata. Unknown count: {len(df[df['sector']=='Unknown'])}")
+    
     # Calculate metrics
     results = {}
     

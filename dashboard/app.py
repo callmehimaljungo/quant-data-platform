@@ -94,7 +94,9 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
             if weights_file.exists():
                 df = pd.read_parquet(weights_file)
                 break
-    
+                
+
+
     # Try R2 cache folder (where pipeline uploads weights)
     if df is None and R2_LOADER_AVAILABLE:
         for strategy in ['low_beta_quality', 'sector_rotation', 'sentiment_allocation']:
@@ -420,6 +422,19 @@ def render_sector_analysis():
     risk_df = load_risk_metrics(cache_key)
     sector_df = load_sector_metrics(cache_key)
     
+    sector_df = load_sector_metrics(cache_key)
+    
+    # Check for Rate Limit / Missing Metadata indication
+    if 'sector' in risk_df.columns:
+        unknown_count = len(risk_df[risk_df['sector'] == 'Unknown'])
+        total_count = len(risk_df)
+        if total_count > 0 and (unknown_count / total_count) > 0.2:
+             st.warning(
+                 f"⚠️ **Thông báo Hệ thống**: {unknown_count}/{total_count} mã ticker đang hiển thị Sector 'Unknown'.\n\n"
+                 "**Nguyên nhân**: API Yahoo Finance đang bị giới hạn (Rate Limit/Quota Exceeded) nên chưa thể tải metadata.\n"
+                 "**Khắc phục**: Hệ thống sẽ tự động thử lại sau. Hiện tại đang sử dụng dữ liệu dự phòng cho các mã lớn."
+             )
+    
     # Sector comparison
     st.subheader("📊 So sánh Sector")
     
@@ -596,45 +611,120 @@ def render_model_results():
     st.subheader("📈 Tóm tắt Hiệu suất Strategy")
     
     # Create performance metrics table
-    perf_data = {
-        'Strategy': ['Low-Beta Quality', 'Sector Rotation', 'Sentiment Allocation', 'SPY (Benchmark)'],
-        'Tổng Lợi nhuận': ['42.5%', '38.2%', '51.3%', '35.8%'],
-        'Lợi nhuận/Năm': ['9.3%', '8.5%', '10.9%', '8.0%'],
-        'Volatility': ['12.4%', '18.2%', '22.5%', '16.8%'],
-        'Sharpe Ratio': [0.75, 0.47, 0.48, 0.48],
-        'Max Drawdown': ['-15.2%', '-22.4%', '-28.1%', '-19.8%'],
-        'Tỷ lệ Win': ['58%', '52%', '54%', '-'],
-    }
-    perf_df = pd.DataFrame(perf_data)
+    # --- Dynamic Performance Metrics Calculation ---
     
-    # Color the best values
-    st.dataframe(perf_df, use_container_width=True)
+    # Helper to calc metrics
+    def calc_metrics(series):
+        if len(series) < 2: return {'Return': 0, 'Vol': 0, 'Sharpe': 0, 'MaxDD': 0}
+        
+        # Returns
+        total_ret = (series.iloc[-1] / series.iloc[0]) - 1
+        daily_rets = series.pct_change().dropna()
+        
+        # Annualized metrics (assuming 252 days)
+        ann_ret = (1 + total_ret) ** (252 / len(series)) - 1 if len(series) > 0 else 0
+        vol = daily_rets.std() * np.sqrt(252)
+        sharpe = (ann_ret - 0.02) / vol if vol > 0 else 0
+        
+        # Max Drawdown
+        cum_max = series.cummax()
+        drawdown = (series - cum_max) / cum_max
+        max_dd = drawdown.min()
+        
+        return {
+            'Total Return': f"{total_ret*100:.1f}%",
+            'Ann. Return': f"{ann_ret*100:.1f}%",
+            'Volatility': f"{vol*100:.1f}%",
+            'Sharpe': f"{sharpe:.2f}",
+            'Max Drawdown': f"{max_dd*100:.1f}%"
+        }
+
+    # Prepare datasets
+    # Note: `backtest_df` is created later in original code, moving it up
+    # However, since create_sample_backtest_results is fast and used later, we can call it here or move line 618 up.
+    # To minimize diff churn, I will just call it here or assume it's available?
+    # Actually line 618 `backtest_df = create_sample_backtest_results()` is BELOW. 
+    # I MUST move the loading UP or duplicate the call. Duplicating is safer if logic flow is fragile.
+    # Better: Move lines 618 call to before this block.
+    
+    if 'backtest_df' not in locals():
+        backtest_df = create_sample_backtest_results()
+
+    # Create All-Time vs Recent DFs
+    recent_df = backtest_df.tail(30) if len(backtest_df) > 30 else backtest_df
+    
+    strategies_to_show = ['Low-Beta Quality', 'Sector Rotation', 'Sentiment', 'SPY (Benchmark)']
+    
+    # Calc All-Time
+    all_time_data = []
+    for col in strategies_to_show:
+        if col in backtest_df.columns:
+            m = calc_metrics(backtest_df[col])
+            m['Strategy'] = col
+            all_time_data.append(m)
+            
+    # Calc Recent
+    recent_data = []
+    for col in strategies_to_show:
+        if col in recent_df.columns:
+            m = calc_metrics(recent_df[col])
+            m['Strategy'] = col
+            recent_data.append(m)
+
+    # Render Split Tables
+    col_m1, col_m2 = st.columns(2)
+    
+    with col_m1:
+        st.write("#### 📅 All-Time Metrics (Long-term)")
+        st.dataframe(pd.DataFrame(all_time_data).set_index('Strategy'), use_container_width=True)
+        
+    with col_m2:
+        st.write("#### ⚡ Recent Metrics (Last 30 Days)")
+        st.dataframe(pd.DataFrame(recent_data).set_index('Strategy'), use_container_width=True)
     
     st.markdown("---")
     
     # Cumulative Returns Chart
     st.subheader("📈 Lợi nhuận Tích lũy (Backtest)")
     
-    backtest_df = create_sample_backtest_results()
+    # Data already loaded above
+    # backtest_df = create_sample_backtest_results()
     
-    fig = go.Figure()
-    for col in ['SPY (Benchmark)', 'Low-Beta Quality', 'Sector Rotation', 'Sentiment']:
-        fig.add_trace(go.Scatter(
-            x=backtest_df['date'],
-            y=backtest_df[col],
-            mode='lines',
-            name=col,
-            line=dict(width=2 if col != 'SPY (Benchmark)' else 1)
-        ))
+    # Define selected_cols for the new plotting logic
+    selected_cols = ['SPY (Benchmark)', 'Low-Beta Quality', 'Sector Rotation', 'Sentiment']
+
+       # Visualization - SPLIT VIEW (Historical vs Recent)
+    col_hist, col_recent = st.columns(2)
     
-    fig.update_layout(
-        height=500,
-        xaxis_title='Ngày',
-        yaxis_title='Giá trị Portfolio ($)',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02),
-        hovermode='x unified'
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    # 1. Historical (All-time)
+    with col_hist:
+        st.write("#### 📜 All-Time History")
+        fig = px.line(backtest_df, x='date', y=selected_cols, 
+                      title='Cumulative Performance (Inception - Now)',
+                      color_discrete_map={'SPY (Benchmark)': 'gray', 'Low-Beta Quality': 'blue'})
+        fig.update_layout(height=400, xaxis_title='Date', yaxis_title='Value ($)', 
+                         legend=dict(orientation='h', yanchor='bottom', y=1.02),
+                         hovermode='x unified')
+        st.plotly_chart(fig, use_container_width=True)
+
+    # 2. Recent (Streamtime - Last 30 Days)
+    with col_recent:
+        st.write("#### ⚡ Recent Streamtime (30 Days)")
+        # Filter for last 30 days
+        if not backtest_df.empty and 'date' in backtest_df.columns:
+            last_date = backtest_df['date'].max()
+            start_recent = last_date - pd.Timedelta(days=30)
+            recent_df = backtest_df[backtest_df['date'] >= start_recent]
+            
+            fig_recent = px.line(recent_df, x='date', y=selected_cols, 
+                                title='Short-term Performance (Last 30 Days)',
+                                color_discrete_map={'SPY (Benchmark)': 'gray', 'Low-Beta Quality': 'blue'})
+            fig_recent.update_layout(height=400, xaxis_title='Date', yaxis_title='Value ($)',
+                                    legend=dict(orientation='h', yanchor='bottom', y=1.02),
+                                    hovermode='x unified')
+            st.plotly_chart(fig_recent, use_container_width=True)
+        else:
+            st.info("Insufficient data for recent view")
     
     st.markdown("---")
     
@@ -676,37 +766,68 @@ def render_model_results():
         elif selected_strategy == 'Sector Rotation':
             st.markdown("**Strategy Logic:** Rotate sectors based on VIX and economic regime")
             
+            # Adapter for Real Data
+            if 'weight' in df.columns and 'current_weight' not in df.columns:
+                df['current_weight'] = df['weight']
+            
             col1, col2 = st.columns(2)
             with col1:
-                fig = px.bar(df, x='sector', y='current_weight', 
-                            color='recommended_action',
-                            title='Current Sector Weights')
-                fig.update_layout(xaxis_tickangle=-45)
-                st.plotly_chart(fig, use_container_width=True)
+                if 'current_weight' in df.columns:
+                    fig = px.bar(df, x='sector', y='current_weight', 
+                                title='Current Sector Weights')
+                    fig.update_layout(xaxis_tickangle=-45)
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No weight data available")
+                    
             with col2:
-                fig = px.bar(df, x='sector', y='momentum_score',
-                            color='momentum_score', color_continuous_scale='RdYlGn',
-                            title='Sector Momentum Scores')
-                fig.update_layout(xaxis_tickangle=-45)
-                st.plotly_chart(fig, use_container_width=True)
+                # Use sector_target_weight if available, else momentum or hide
+                y_col = 'sector_target_weight' if 'sector_target_weight' in df.columns else 'momentum_score'
+                
+                if y_col in df.columns:
+                    title = 'Target Weights' if y_col == 'sector_target_weight' else 'Momentum Scores'
+                    fig = px.bar(df, x='sector', y=y_col,
+                                title=title)
+                    fig.update_layout(xaxis_tickangle=-45)
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No target/momentum data available")
         
         elif selected_strategy == 'Sentiment Allocation':
             st.markdown("**Strategy Logic:** Allocate based on news sentiment scores")
             
+            # Adapter for Real Data
+            if 'sentiment' in df.columns and 'sentiment_score' not in df.columns:
+                df['sentiment_score'] = df['sentiment']
+            
+            if 'sentiment_class' in df.columns and 'signal' not in df.columns:
+                # Map class to signal
+                df['signal'] = df['sentiment_class'].map({
+                    'positive': 'BUY', 
+                    'negative': 'SELL', 
+                    'neutral': 'HOLD'
+                }).fillna('HOLD')
+            elif 'signal' not in df.columns:
+                df['signal'] = 'HOLD'
+            
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Avg Sentiment", f"{df['sentiment_score'].mean():.2f}")
+                if 'sentiment_score' in df.columns:
+                    st.metric("Avg Sentiment", f"{df['sentiment_score'].mean():.2f}")
             with col2:
-                st.metric("BUY Signals", len(df[df['signal'] == 'BUY']))
+                if 'signal' in df.columns:
+                    st.metric("BUY Signals", len(df[df['signal'] == 'BUY']))
             with col3:
-                st.metric("SELL Signals", len(df[df['signal'] == 'SELL']))
+                if 'signal' in df.columns:
+                    st.metric("SELL Signals", len(df[df['signal'] == 'SELL']))
             
-            fig = px.bar(df.sort_values('sentiment_score'), 
-                        x='ticker', y='sentiment_score',
-                        color='signal', 
-                        color_discrete_map={'BUY': 'green', 'HOLD': 'gray', 'SELL': 'red'},
-                        title='Sentiment Scores by Ticker')
-            st.plotly_chart(fig, use_container_width=True)
+            if 'sentiment_score' in df.columns:
+                fig = px.bar(df.sort_values('sentiment_score'), 
+                            x='ticker', y='sentiment_score',
+                            color='signal', 
+                            color_discrete_map={'BUY': 'green', 'HOLD': 'gray', 'SELL': 'red'},
+                            title='Sentiment Scores by Ticker')
+                st.plotly_chart(fig, use_container_width=True)
         
         # Show raw data
         with st.expander("View Raw Data"):
@@ -731,6 +852,8 @@ def render_model_results():
             time.sleep(2)
             st.success("✅ Hoàn tất Backtest! Kết quả đã cập nhật.")
             st.balloons()
+            time.sleep(1)
+            st.rerun()
 
 
 # =============================================================================

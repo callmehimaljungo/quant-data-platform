@@ -267,6 +267,7 @@ def build_sentiment_portfolio(df_prices: pd.DataFrame,
 def run_sentiment_allocation() -> pd.DataFrame:
     """Run Sentiment-Adjusted strategy"""
     from utils import is_lakehouse_table, lakehouse_to_pandas, pandas_to_lakehouse
+    from gold.utils import add_sector_metadata
     
     start_time = datetime.now()
     
@@ -318,6 +319,11 @@ def run_sentiment_allocation() -> pd.DataFrame:
     
     logger.info(f"  [OK] Prices: {len(df_prices):,} rows")
     logger.info(f"  Memory usage: {df_prices.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
+
+    # Fix sectors in prices data before building portfolio
+    logger.info("Updating sector metadata in price data...")
+    df_prices = add_sector_metadata(df_prices, ticker_col='ticker')
+
     
     if is_lakehouse_table(ECONOMIC_PATH):
         df_economic = lakehouse_to_pandas(ECONOMIC_PATH)
@@ -339,6 +345,9 @@ def run_sentiment_allocation() -> pd.DataFrame:
     if len(df_portfolio) == 0:
         logger.error("[ERROR] Failed to build portfolio")
         return pd.DataFrame()
+    
+    # Update metadata in final portfolio
+    df_portfolio = add_sector_metadata(df_portfolio, ticker_col='ticker')
     
     # Save to Lakehouse
     logger.info(f"\nSaving to: {OUTPUT_PATH}")

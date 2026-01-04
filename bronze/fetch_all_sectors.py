@@ -29,8 +29,8 @@ except ImportError:
     YFINANCE_AVAILABLE = False
     logger.warning("yfinance not installed. Run: pip install yfinance")
 
-BATCH_SIZE = 100  # Tickers per batch
-DELAY_BETWEEN_BATCHES = 2  # Seconds
+BATCH_SIZE = 50  # Tickers per batch
+DELAY_BETWEEN_BATCHES = 5  # Seconds
 
 
 def get_all_tickers_from_bronze() -> List[str]:
@@ -61,6 +61,7 @@ def load_existing_metadata() -> Dict[str, dict]:
         df = pd.read_parquet(metadata_file)
         for _, row in df.iterrows():
             existing[row['ticker']] = {
+                'ticker': row['ticker'],
                 'sector': row.get('sector', 'Unknown'),
                 'industry': row.get('industry', 'Unknown')
             }
@@ -133,6 +134,10 @@ def fetch_all_sectors(max_tickers: int = None):
         for ticker in batch:
             info = fetch_ticker_info(ticker)
             results.append(info)
+            
+            # Small delay between tickers to avoid rate limiting
+            import random
+            time.sleep(0.2 + random.random() * 0.2)  # 0.2 - 0.4 seconds
         
         # Delay to avoid rate limiting
         if batch_num < total_batches:

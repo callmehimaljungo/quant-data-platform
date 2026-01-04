@@ -364,6 +364,11 @@ def run_risk_analysis() -> Dict[str, pd.DataFrame]:
     # 1. Load Silver data
     df = load_silver_data()
     logger.info(f"[OK] Loaded {len(df):,} rows")
+    
+    # Enrich with Sector Metadata to fix 'Unknown'
+    from gold.utils import add_sector_metadata
+    df = add_sector_metadata(df)
+    
     logger.info(f"  Tickers: {df['ticker'].nunique():,}")
     logger.info(f"  Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
     

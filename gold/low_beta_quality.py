@@ -327,6 +327,7 @@ def build_low_beta_quality_portfolio(df_prices: pd.DataFrame,
 def run_low_beta_quality() -> pd.DataFrame:
     """Run Low-Beta Quality strategy"""
     from utils import pandas_to_lakehouse
+    from gold.utils import add_sector_metadata
     
     start_time = datetime.now()
     
@@ -345,6 +346,11 @@ def run_low_beta_quality() -> pd.DataFrame:
     
     # Build portfolio
     df_portfolio = build_low_beta_quality_portfolio(df_prices, spy_returns, df_economic)
+    
+    # Add sector metadata from ticker_metadata.parquet
+    logger.info("Adding sector metadata...")
+    df_portfolio = add_sector_metadata(df_portfolio, ticker_col='ticker')
+    logger.info(f"[OK] Sector metadata added")
     
     # Free memory after processing
     del df_prices
