@@ -1,0 +1,64 @@
+"""
+Test all API keys at once
+"""
+import requests
+from datetime import datetime, timedelta
+
+print("🧪 Testing All API Keys\n")
+print("=" * 70)
+
+# 1. Finnhub
+print("\n1️⃣ Testing Finnhub...")
+finnhub_key = "d5cfqthr01qsbmgki9pgd5cfqthr01qsbmgki9q0"
+try:
+    url = f"https://finnhub.io/api/v1/quote?symbol=AAPL&token={finnhub_key}"
+    response = requests.get(url, timeout=10)
+    if response.status_code == 200:
+        data = response.json()
+        print(f"   ✅ SUCCESS! AAPL price: ${data.get('c', 'N/A')}")
+    else:
+        print(f"   ❌ FAILED: HTTP {response.status_code}")
+        print(f"   Response: {response.text[:100]}")
+except Exception as e:
+    print(f"   ❌ ERROR: {e}")
+
+# 2. Polygon (Massive)
+print("\n2️⃣ Testing Polygon/Massive...")
+polygon_key = "saf0qKWy4gHGEIl_SERNhBY1q_Mo6fY6"
+try:
+    # Test with previous trading day
+    date = (datetime.now() - timedelta(days=3)).strftime('%Y-%m-%d')
+    url = f"https://api.polygon.io/v2/aggs/ticker/AAPL/range/1/day/{date}/{date}?apiKey={polygon_key}"
+    response = requests.get(url, timeout=10)
+    if response.status_code == 200:
+        data = response.json()
+        if data.get('results'):
+            print(f"   ✅ SUCCESS! Got {len(data['results'])} data points")
+        else:
+            print(f"   ⚠️ No data, but API works: {data.get('status')}")
+    else:
+        print(f"   ❌ FAILED: HTTP {response.status_code}")
+        print(f"   Response: {response.text[:100]}")
+except Exception as e:
+    print(f"   ❌ ERROR: {e}")
+
+# 3. NewsAPI
+print("\n3️⃣ Testing NewsAPI...")
+newsapi_key = "d7d396ec1ebb45bfb09c516907d2b3dd"
+try:
+    url = f"https://newsapi.org/v2/everything?q=stock+market&apiKey={newsapi_key}&pageSize=5"
+    response = requests.get(url, timeout=10)
+    if response.status_code == 200:
+        data = response.json()
+        articles = data.get('articles', [])
+        print(f"   ✅ SUCCESS! Got {len(articles)} articles")
+        if articles:
+            print(f"   Sample: {articles[0].get('title', '')[:60]}...")
+    else:
+        print(f"   ❌ FAILED: HTTP {response.status_code}")
+        print(f"   Response: {response.text[:100]}")
+except Exception as e:
+    print(f"   ❌ ERROR: {e}")
+
+print("\n" + "=" * 70)
+print("✅ API Testing Complete!")

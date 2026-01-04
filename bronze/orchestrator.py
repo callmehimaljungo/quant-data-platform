@@ -38,6 +38,12 @@ class DataOrchestrator:
             logger.debug(f"Polygon collector not available: {e}")
         
         try:
+            from bronze.collectors.prices.finnhub_collector import FinnhubCollector
+            self.collectors['prices'].append(FinnhubCollector())
+        except Exception as e:
+            logger.debug(f"Finnhub collector not available: {e}")
+        
+        try:
             from bronze.collectors.prices.yfinance_collector import YFinanceCollector
             self.collectors['prices'].append(YFinanceCollector())
         except Exception as e:
