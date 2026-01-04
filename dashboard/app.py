@@ -539,13 +539,13 @@ def render_ml_models():
         - **Confounders**: Các yếu tố gây nhiễu được kiểm soát
         """)
         
-        # Try to load causal results
-        causal_path = GOLD_DIR / 'causal_analysis_lakehouse'
         
-        if causal_path.exists():
-            parquet_files = list(causal_path.glob('*.parquet'))
-            if parquet_files:
-                df = pd.read_parquet(parquet_files[0])
+        # Load causal results from R2
+        df = None
+        if R2_LOADER_AVAILABLE:
+            df = load_latest_from_lakehouse('processed/gold/causal_analysis_lakehouse/')
+        
+        if df is not None and len(df) > 0:
                 
                 # Clean treatment names for display
                 df['treatment_clean'] = df['treatment'].str.replace('high_', '').str.replace('_', ' ').str.title()
@@ -637,13 +637,13 @@ def render_ml_models():
         st.subheader("Feature Importance (Random Forest)")
         st.markdown("Xếp hạng các yếu tố quan trọng nhất trong việc dự đoán hướng giá.")
         
-        # Try to load feature importance
-        fi_path = GOLD_DIR / 'feature_importance_lakehouse'
         
-        if fi_path.exists():
-            parquet_files = list(fi_path.glob('*.parquet'))
-            if parquet_files:
-                df = pd.read_parquet(parquet_files[0])
+        # Load feature importance from R2
+        df = None
+        if R2_LOADER_AVAILABLE:
+            df = load_latest_from_lakehouse('processed/gold/feature_importance_lakehouse/')
+        
+        if df is not None and len(df) > 0:
                 
                 # Feature importance bar chart
                 fig = px.bar(df.head(15), x='importance', y='feature', 
