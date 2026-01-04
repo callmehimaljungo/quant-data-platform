@@ -61,7 +61,8 @@ logs/
 .coverage
 htmlcov/
 .tox/
-test_env_keys.py  # Security: Don't commit API key testing scripts
+# Security: Don't commit API key testing scripts
+test_env_keys.py
 
 # Documentation
 site/
