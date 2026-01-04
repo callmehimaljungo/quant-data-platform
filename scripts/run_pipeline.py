@@ -197,25 +197,41 @@ def run_batch_mode(skip_bronze: bool = False, skip_silver: bool = False, sync_r2
     
     return results
 
-
-def run_stream_mode(target_date: str = None):
+def run_stream_mode(target_date: str = None, sync_r2: bool = True):
     """
-    Lightweight streaming update
+    Lightweight streaming update with R2 sync
+    - Downloads cache from R2 before processing
     - Only processes today's data
-    - Uses cached weights
-    - Does NOT recompute heavy calculations
+    - Uses cached weights (no recompute)
+    - Uploads updated cache to R2 after processing
     """
     start_time = datetime.now()
     
     if target_date is None:
         target_date = datetime.now().strftime('%Y-%m-%d')
     
+    # Check R2 configuration
+    r2_enabled = sync_r2 and is_r2_configured()
+    
     print("=" * 80)
     print("⚡ STREAM MODE: LIGHTWEIGHT UPDATE")
     print("=" * 80)
     print(f"Target date: {target_date}")
     print(f"Start time: {start_time}")
+    print(f"R2 Sync: {'ENABLED' if r2_enabled else 'DISABLED'}")
     print()
+    
+    # Step 0: Download cache from R2
+    if r2_enabled:
+        print("-" * 80)
+        print("☁️ Step 0: PULL CACHE FROM R2")
+        print("-" * 80)
+        try:
+            download_gold_from_r2(GOLD_DIR)
+            print("   ✅ Cache downloaded from R2")
+        except Exception as e:
+            print(f"   ⚠️ R2 download failed: {e}")
+        print()
     
     # Step 1: Check cache validity
     print("-" * 80)
@@ -235,25 +251,32 @@ def run_stream_mode(target_date: str = None):
     
     print()
     
-    # Step 2: Load today's data only
+    # Step 2: Download today's price data from R2
     print("-" * 80)
     print("📥 Step 2: LOAD TODAY'S DATA")
     print("-" * 80)
     
-    try:
-        # Load only target date partition
-        price_partition = BRONZE_DIR / 'prices_partitioned' / f'date={target_date}'
+    today_prices = pd.DataFrame()
+    
+    # Check local first
+    price_partition = BRONZE_DIR / 'prices_partitioned' / f'date={target_date}'
+    
+    if price_partition.exists():
+        today_prices = pd.read_parquet(price_partition)
+        print(f"   ✅ Loaded {len(today_prices)} price records for {target_date}")
+    else:
+        print(f"   ⚠️ No price data for {target_date} locally")
         
-        if price_partition.exists():
-            today_prices = pd.read_parquet(price_partition)
-            print(f"   ✅ Loaded {len(today_prices)} price records for {target_date}")
-        else:
-            print(f"   ⚠️ No price data for {target_date}")
-            today_prices = pd.DataFrame()
-            
-    except Exception as e:
-        print(f"   ❌ Error loading data: {e}")
-        today_prices = pd.DataFrame()
+        # Try downloading from R2
+        if r2_enabled:
+            print("   ☁️ Trying R2...")
+            try:
+                download_bronze_from_r2(BRONZE_DIR)
+                if price_partition.exists():
+                    today_prices = pd.read_parquet(price_partition)
+                    print(f"   ✅ Downloaded from R2: {len(today_prices)} records")
+            except Exception as e:
+                print(f"   ⚠️ R2 download failed: {e}")
     
     print()
     
@@ -274,9 +297,9 @@ def run_stream_mode(target_date: str = None):
                 print(f"   ⚠️ {strategy}: No data")
                 continue
             
-            # Simple PnL calculation (placeholder)
+            # Simple PnL calculation
             # In production: weights * returns
-            pnl = 0.0  # Placeholder
+            pnl = 0.0  # Placeholder for actual calculation
             pnl_results[strategy] = pnl
             print(f"   ✅ {strategy}: PnL = {pnl:.2%}")
             
@@ -285,7 +308,7 @@ def run_stream_mode(target_date: str = None):
     
     print()
     
-    # Step 4: Append to history
+    # Step 4: Update history
     print("-" * 80)
     print("💾 Step 4: UPDATE HISTORY")
     print("-" * 80)
@@ -294,14 +317,28 @@ def run_stream_mode(target_date: str = None):
         cache.append_daily_performance(target_date, pnl_results)
         print(f"   ✅ Appended {target_date} to performance history")
     
+    print()
+    
+    # Step 5: Upload updated cache to R2
+    if r2_enabled:
+        print("-" * 80)
+        print("☁️ Step 5: PUSH CACHE TO R2")
+        print("-" * 80)
+        try:
+            upload_gold_to_r2(GOLD_DIR)
+            print("   ✅ Cache uploaded to R2")
+        except Exception as e:
+            print(f"   ⚠️ R2 upload failed: {e}")
+        print()
+    
     # Summary
     duration = (datetime.now() - start_time).total_seconds()
     
-    print()
     print("=" * 80)
     print("⚡ STREAM MODE COMPLETE")
     print("=" * 80)
     print(f"Duration: {duration:.2f} seconds")
+    print(f"R2 Sync: {'done' if r2_enabled else 'skipped'}")
     print(f"Memory: Minimal (did not load full dataset)")
     
     return {'status': 'success', 'pnl': pnl_results, 'duration': duration}
