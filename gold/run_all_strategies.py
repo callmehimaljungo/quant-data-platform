@@ -103,6 +103,32 @@ def run_all_strategies(start_date: str = None, end_date: str = None, quick_updat
             all_tickers.update(tickers)
     
     logger.info(f"\nTotal unique stocks across all strategies: {len(all_tickers)}")
+
+    # -------------------------------------------------------------------------
+    # Update Cache for Dashboard/App (Automatic Sync)
+    # -------------------------------------------------------------------------
+    logger.info("\nUpdating Dashboard Cache from Lakehouse Results...")
+    import shutil
+    cache_dir = GOLD_DIR / 'cache'
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    
+    for strategy in ['low_beta_quality', 'sector_rotation', 'sentiment_allocation']:
+        lakehouse_dir = GOLD_DIR / f'{strategy}_lakehouse'
+        if lakehouse_dir.exists():
+            # Get latest file
+            files = sorted(lakehouse_dir.glob('*.parquet'), key=lambda x: x.stat().st_mtime, reverse=True)
+            if files:
+                dest = cache_dir / f'{strategy}_weights.parquet'
+                try:
+                    shutil.copy2(files[0], dest)
+                    logger.info(f"  [OK] Updated cache for {strategy}")
+                except Exception as e:
+                    logger.error(f"  [FAIL] Failed to update cache for {strategy}: {e}")
+            else:
+                 logger.warning(f"  [WARN] No files found in {lakehouse_dir}")
+        else:
+            logger.warning(f"  [WARN] Lakehouse dir not found: {lakehouse_dir}")
+
     
     # Duration
     duration = (datetime.now() - start_time).total_seconds()
