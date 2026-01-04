@@ -95,7 +95,15 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
                 df = pd.read_parquet(weights_file)
                 break
     
-    # Try R2
+    # Try R2 cache folder (where pipeline uploads weights)
+    if df is None and R2_LOADER_AVAILABLE:
+        for strategy in ['low_beta_quality', 'sector_rotation', 'sentiment_allocation']:
+            r2_key = f'processed/gold/cache/{strategy}_weights.parquet'
+            df = load_parquet_from_r2(r2_key)
+            if df is not None and len(df) > 0:
+                break
+    
+    # Try R2 lakehouse (legacy path)
     if df is None and R2_LOADER_AVAILABLE:
         df = load_latest_from_lakehouse('processed/gold/ticker_metrics_lakehouse/')
     
