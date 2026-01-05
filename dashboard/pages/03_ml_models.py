@@ -38,6 +38,14 @@ with tab1:
     df = None
     if r2_ready:
         df = load_latest_from_lakehouse('processed/gold/causal_analysis_lakehouse/')
+    if df is None:
+        # Fallback to local
+        try:
+            local_path = Path("data/gold/causal_analysis_lakehouse/latest_causal_metrics.parquet")
+            if local_path.exists():
+                df = pd.read_parquet(local_path)
+        except Exception:
+            pass
     
     if df is not None and len(df) > 0:
             df['treatment_clean'] = df['treatment'].str.replace('high_', '').str.replace('_', ' ').str.title()
@@ -71,7 +79,7 @@ with tab1:
                 st.dataframe(df, use_container_width=True)
     else:
         st.info("💡 Chưa có kết quả Causal Analysis. Vui lòng chạy pipeline.")
-        st.code("python models/causal_model.py")
+        st.code("python -m models.causal.main")
         
         st.markdown("**Kết quả mẫu (Sample):**")
         sample_causal = pd.DataFrame({
