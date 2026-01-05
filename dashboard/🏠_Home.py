@@ -107,7 +107,7 @@ with col1:
         color_discrete_sequence=['#1f77b4']
     )
     fig.update_layout(height=400)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 with col2:
     st.subheader("📈 Hiệu suất theo Sector")
@@ -132,7 +132,7 @@ with col2:
         hover_data=['num_tickers'] if 'num_tickers' in sector_agg.columns else None
     )
     fig.update_layout(height=400, xaxis_tickangle=-45)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 # =============================================================================
 # Top Performers Table
@@ -144,6 +144,6 @@ top_10 = risk_df.nlargest(10, 'sharpe_ratio')[available_cols]
 
 st.dataframe(
     format_dataframe(top_10), 
-    use_container_width=True, 
+    width='stretch', 
     column_config=get_column_config()
 )

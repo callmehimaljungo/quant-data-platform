@@ -51,7 +51,7 @@ fig = px.bar(
     color_continuous_scale='RdYlGn' if 'sharpe' in selected_metric else 'Blues'
 )
 fig.update_layout(height=400, xaxis_tickangle=-45)
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width='stretch')
 
 # Sector drill-down
 st.subheader("🔍 Chi tiết Sector")
@@ -76,7 +76,7 @@ if sectors:
     
     st.dataframe(
         format_dataframe(sector_stocks.sort_values('sharpe_ratio', ascending=False).head(20)),
-        use_container_width=True,
+        width='stretch',
         column_config=get_column_config()
     )
 else:

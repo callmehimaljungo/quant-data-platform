@@ -69,7 +69,7 @@ fig = px.scatter(
 )
 fig.update_traces(marker=dict(size=10, opacity=0.7, line=dict(width=1, color='DarkSlateGrey')))
 fig.update_layout(height=500, hovermode='closest')
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width='stretch')
 
 # Distributions
 col1, col2 = st.columns(2)
@@ -83,7 +83,7 @@ with col1:
         color_discrete_sequence=['#2ecc71'],
         labels={'volatility': 'Volatility (%)'}
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 with col2:
     st.subheader("📉 Phân phối Sụt giảm (MaxDD)")
@@ -94,7 +94,7 @@ with col2:
         color_discrete_sequence=['#e74c3c'],
         labels={'max_drawdown': 'Max Drawdown (%)'}
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 # =============================================================================
 # Data Table
@@ -104,6 +104,6 @@ st.subheader("📋 Chi tiết Chỉ số Rủi ro")
 display_df = format_dataframe(filtered_df.sort_values('sharpe_ratio', ascending=False))
 st.dataframe(
     display_df,
-    use_container_width=True,
+    width='stretch',
     column_config=get_column_config()
 )

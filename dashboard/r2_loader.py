@@ -1,12 +1,10 @@
-"""
-R2 Data Loader for Streamlit Dashboard
-Load parquet data from Cloudflare R2 storage
-"""
 
 import os
 import io
 import pandas as pd
 import streamlit as st
+from pathlib import Path
+from dotenv import load_dotenv
 
 # Check if boto3 is available
 try:
@@ -22,6 +20,9 @@ def get_r2_client():
     """Get R2 client using Streamlit secrets or env vars"""
     if not BOTO3_AVAILABLE:
         return None
+    
+    # Force load dotenv to ensure os.environ is populated
+    load_dotenv(Path(__file__).parent.parent.parent / '.env')
     
     # Try Streamlit secrets first, then env vars
     try:
@@ -47,6 +48,9 @@ def get_r2_client():
 
 def get_bucket_name():
     """Get bucket name from secrets or env"""
+    # Force load dotenv
+    load_dotenv(Path(__file__).parent.parent.parent / '.env')
+    
     try:
         return st.secrets.get("R2_BUCKET") or os.environ.get("R2_BUCKET", "datn")
     except Exception:
@@ -67,10 +71,8 @@ def load_parquet_from_r2(r2_key: str) -> pd.DataFrame:
         parquet_data = response['Body'].read()
         return pd.read_parquet(io.BytesIO(parquet_data))
     except ClientError as e:
-        # st.warning(f"Could not load {r2_key}: {e}")
         return None
     except Exception as e:
-        # st.warning(f"Error loading {r2_key}: {e}")
         return None
 
 
@@ -112,6 +114,9 @@ def list_r2_files(prefix: str) -> list:
 def load_latest_from_lakehouse(lakehouse_prefix: str) -> pd.DataFrame:
     """Load the latest parquet file from a lakehouse folder in R2"""
     files = list_r2_files(lakehouse_prefix)
+    if not files:
+        return None
+        
     parquet_files = [f for f in files if f.endswith('.parquet')]
     
     if not parquet_files:
