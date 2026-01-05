@@ -99,11 +99,16 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
 
     # Try R2 cache folder (where pipeline uploads weights)
     if df is None and R2_LOADER_AVAILABLE:
-        for strategy in ['low_beta_quality', 'sector_rotation', 'sentiment_allocation']:
-            r2_key = f'processed/gold/cache/{strategy}_weights.parquet'
-            df = load_parquet_from_r2(r2_key)
-            if df is not None and len(df) > 0:
-                break
+        # Try realtime metrics first (preferred)
+        df = load_parquet_from_r2('processed/gold/cache/realtime_metrics.parquet')
+        
+        # Fallback to strategy weights if no realtime metrics
+        if df is None:
+            for strategy in ['low_beta_quality', 'sector_rotation', 'sentiment_allocation']:
+                r2_key = f'processed/gold/cache/{strategy}_weights.parquet'
+                df = load_parquet_from_r2(r2_key)
+                if df is not None and len(df) > 0:
+                    break
     
     # Try R2 lakehouse (legacy path)
     if df is None and R2_LOADER_AVAILABLE:
@@ -220,6 +225,7 @@ def render_sidebar():
     st.sidebar.title("📊 Nền tảng Dữ liệu Quant")
     st.sidebar.markdown("---")
     
+    # Navigation with icons
     page = st.sidebar.radio(
         "Điều hướng",
         ["🏠 Tổng quan", "📈 Risk Metrics", "🏢 Phân tích Sector", 
@@ -227,25 +233,64 @@ def render_sidebar():
     )
     
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### Trạng thái")
     
-    # Check R2 availability
-    r2_available = R2_LOADER_AVAILABLE and is_r2_available() if R2_LOADER_AVAILABLE else False
-    if r2_available:
-        st.sidebar.markdown("☁️ **R2: Online**")
+    # SYSTEM STATUS CARD
+    st.sidebar.markdown("### 🔌 Trạng thái Hệ thống")
     
-    # Check cache availability
+    # Check status
+    r2_ready = False
+    if R2_LOADER_AVAILABLE:
+        try:
+            r2_ready = is_r2_available()
+        except:
+            pass
+            
     cache_dir = GOLD_DIR / 'cache'
-    # Check specifically for strategy weights or risk metrics
-    cache_files = list(cache_dir.glob('*_weights.parquet')) + list(cache_dir.glob('risk_metrics.parquet'))
+    cache_files = list(cache_dir.glob('*_weights.parquet')) + list(cache_dir.glob('realtime_metrics.parquet')) + list(cache_dir.glob('risk_metrics.parquet'))
     cache_exists = len(cache_files) > 0
-    st.sidebar.markdown(f"Cache: {'✅ Loaded' if cache_exists else '⏳ Building'}")
     
-    if cache_exists:
-        st.sidebar.caption(f"Files: {len(cache_files)}")
-    
+    # Render Status
+    if r2_ready and cache_exists:
+        st.sidebar.success("✅ **Hệ thống: Online**\n\n"
+                           f"- Cloud R2: Kết nối\n"
+                           f"- Cache Local: {len(cache_files)} files")
+    elif cache_exists:
+        st.sidebar.warning("⚠️ **Hệ thống: Local Only**\n\n"
+                           "- Cloud R2: Mất kết nối\n"
+                           "- Dữ liệu: Local Cache")
+    else:
+        st.sidebar.error("❌ **Hệ thống: Offline**\n\n"
+                         "- Không tìm thấy dữ liệu")
+
     st.sidebar.markdown("---")
-    st.sidebar.markdown(f"*{datetime.now().strftime('%d/%m/%Y %H:%M')}*")
+    
+    # TIMESTAMPS
+    if cache_exists:
+        # Show last update time from cache
+        latest_file = max(cache_files, key=lambda x: x.stat().st_mtime)
+        last_update = datetime.fromtimestamp(latest_file.stat().st_mtime)
+        
+        # Calculate time age
+        time_diff = datetime.now() - last_update
+        if time_diff.total_seconds() < 600: # < 10 mins
+            color = "green"
+            status_text = "Vừa cập nhật"
+        elif time_diff.total_seconds() < 3600: # < 1 hour
+            color = "orange"
+            status_text = "Cập nhật 1h trước"
+        else:
+            color = "red"
+            status_text = "Dữ liệu cũ"
+
+        st.sidebar.markdown(f"**📉 Dữ liệu:** :{color}[{status_text}]")
+        st.sidebar.caption(f"Last Sync: {last_update.strftime('%d/%m %H:%M')}")
+    
+    # Current Time with UTC
+    import time
+    utc_offset = -time.timezone // 3600 if time.daylight == 0 else -time.altzone // 3600
+    utc_str = f"UTC+{utc_offset}" if utc_offset >= 0 else f"UTC{utc_offset}"
+    
+    st.sidebar.caption(f"🕒 Server Time: {datetime.now().strftime('%H:%M')} ({utc_str})")
     
     return page
 
