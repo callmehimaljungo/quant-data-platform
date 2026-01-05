@@ -53,7 +53,7 @@ def get_bucket_name():
         return os.environ.get("R2_BUCKET", "datn")
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def load_parquet_from_r2(r2_key: str) -> pd.DataFrame:
     """Load a parquet file from R2 and return as DataFrame"""
     client = get_r2_client()
@@ -67,10 +67,25 @@ def load_parquet_from_r2(r2_key: str) -> pd.DataFrame:
         parquet_data = response['Body'].read()
         return pd.read_parquet(io.BytesIO(parquet_data))
     except ClientError as e:
-        st.warning(f"Could not load {r2_key}: {e}")
+        # st.warning(f"Could not load {r2_key}: {e}")
         return None
     except Exception as e:
-        st.warning(f"Error loading {r2_key}: {e}")
+        # st.warning(f"Error loading {r2_key}: {e}")
+        return None
+
+
+@st.cache_data(ttl=300)
+def get_r2_object_last_modified(r2_key: str):
+    """Get last modified timestamp of an R2 object"""
+    client = get_r2_client()
+    if client is None:
+        return None
+        
+    bucket = get_bucket_name()
+    try:
+        response = client.head_object(Bucket=bucket, Key=r2_key)
+        return response.get('LastModified')
+    except Exception:
         return None
 
 

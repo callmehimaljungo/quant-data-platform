@@ -1,31 +1,11 @@
 
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import streamlit as st
-from dotenv import load_dotenv
 import plotly.express as px
 import pandas as pd
-
-# =============================================================================
-# SETUP & CONFIG
-# =============================================================================
-
-# Setup Path First
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
-
-# Load Env
-load_dotenv(PROJECT_ROOT / '.env')
-
-# Page configuration
-st.set_page_config(
-    page_title="Quant Dashboard",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Imports (must be after path setup)
 from dashboard.utils.data_loader import (
     load_risk_metrics, 
     get_cache_key, 
@@ -41,15 +21,12 @@ render_sidebar()
 # Page Title
 st.title("🏠 Tổng quan Portfolio")
 
-# =============================================================================
-# DATA LOADING
-# =============================================================================
+# Load Data
 cache_key = get_cache_key()
-# This function loads from R2 if configured and available
 risk_df = load_risk_metrics(cache_key)
 
 if risk_df is None:
-    st.error("Không thể tải dữ liệu. Vui lòng kiểm tra kết nối R2 hoặc chạy pipeline Local.")
+    st.error("Không thể tải dữ liệu. Vui lòng kiểm tra kết nối.")
     st.stop()
 
 # =============================================================================

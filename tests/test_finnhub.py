@@ -2,13 +2,19 @@
 Test Finnhub API with single ticker
 """
 import os
-os.environ['FINNHUB_API_KEY'] = 'd5cfqthr01qsbmgki9pgd5cfqthr01qsbmgki9q0'
+from dotenv import load_dotenv
+
+load_dotenv()
+# os.environ['FINNHUB_API_KEY'] = '...' # SCRUBBED
 
 import requests
 import pandas as pd
 from datetime import datetime
 
-API_KEY = os.environ['FINNHUB_API_KEY']
+API_KEY = os.getenv('FINNHUB_API_KEY')
+if not API_KEY:
+    print("⚠️ FINNHUB_API_KEY not found")
+    exit(1)
 BASE_URL = "https://finnhub.io/api/v1"
 
 # Test with single ticker
