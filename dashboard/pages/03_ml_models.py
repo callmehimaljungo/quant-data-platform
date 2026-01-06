@@ -19,10 +19,10 @@ st.title("🔬 Mô hình Machine Learning")
 st.markdown("""
 Trang này hiển thị kết quả từ các mô hình ML bao gồm:
 - **Causal Analysis**: Phân tích nhân quả VIX → Returns
-- **Feature Importance**: Xếp hạng các yếu tố quan trọng dự báo giá
+- **Sector Rotation**: Phân bổ danh mục theo chu kỳ kinh tế
 """)
 
-tab1, tab2 = st.tabs(["📊 Causal Analysis", "🌲 Feature Importance"])
+tab1, tab2 = st.tabs(["📊 Causal Analysis", "🔄 Sector Rotation"])
 
 with tab1:
     st.subheader("Phân tích Nhân quả (Causal Analysis)")
@@ -90,59 +90,68 @@ with tab1:
         st.dataframe(sample_causal, width='stretch')
 
 with tab2:
-    st.subheader("Tầm quan trọng của yếu tố (Feature Importance)")
+    st.subheader("Phân bổ theo Chu kỳ Kinh tế (Sector Rotation)")
     st.markdown("""
-    **Mô hình**: Random Forest Classifier (Dự báo xu hướng giá cổ phiếu).
-    Bảng dưới đây hiển thị các yếu tố kỹ thuật và vĩ mô có ảnh hưởng lớn nhất đến biến động giá.
+    **Chiến lược**: Sector Rotation theo Business Cycle (Fidelity Research)
+    - Xác định giai đoạn kinh tế hiện tại dựa trên chỉ số VIX (Fear Index)
+    - Phân bổ vốn vào các ngành phù hợp với từng giai đoạn:
+      - **Recovery**: Technology, Consumer Cyclical (kinh tế hồi phục)
+      - **Expansion**: Energy, Industrials (kinh tế tăng trưởng)
+      - **Recession**: Healthcare, Utilities, Consumer Defensive (phòng thủ)
     """)
     
-    fi_df = None
+    sr_df = None
     if r2_ready:
-        fi_df = load_latest_from_lakehouse('processed/gold/feature_importance_lakehouse/')
+        sr_df = load_latest_from_lakehouse('processed/gold/sector_rotation_lakehouse/')
     
-    if fi_df is None:
+    if sr_df is None:
         # Fallback to local
         try:
-            local_fi_path = Path("data/gold/feature_importance_lakehouse/latest_feature_importance.parquet")
-            if local_fi_path.exists():
-                fi_df = pd.read_parquet(local_fi_path)
+            local_sr_path = Path("data/gold/sector_rotation_lakehouse")
+            if local_sr_path.exists():
+                parquet_files = sorted(local_sr_path.glob("*.parquet"))
+                if parquet_files:
+                    sr_df = pd.read_parquet(parquet_files[-1])
         except Exception:
             pass
             
-    if fi_df is not None and not fi_df.empty:
-        # Style the feature names
-        fi_df['feature_display'] = fi_df['feature'].str.replace('_', ' ').str.title()
+    if sr_df is not None and not sr_df.empty:
+        # Display current regime
+        current_regime = sr_df['regime'].iloc[0] if 'regime' in sr_df.columns else "Unknown"
+        regime_colors = {'expansion': '🟢', 'peak': '🟡', 'recession': '🔴', 'recovery': '🔵'}
+        regime_icon = regime_colors.get(current_regime.lower(), '⚪')
         
-        fig_fi = px.bar(
-            fi_df.head(15).sort_values('importance', ascending=True),
-            x='importance',
-            y='feature_display',
-            orientation='h',
-            color='importance',
-            color_continuous_scale='Blues',
-            labels={'importance': 'Độ quan trọng (Importance)', 'feature_display': 'Yếu tố'},
-            title='Top 15 Yếu tố quan trọng nhất'
-        )
-        fig_fi.update_layout(height=500, showlegend=False)
-        st.plotly_chart(fig_fi, width='stretch')
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Giai đoạn Kinh tế", f"{regime_icon} {current_regime.title()}")
+        with col2:
+            st.metric("Số cổ phiếu", len(sr_df))
+        with col3:
+            n_sectors = sr_df['sector'].nunique() if 'sector' in sr_df.columns else 0
+            st.metric("Số ngành", n_sectors)
         
-        with st.expander("Ghi chú về các yếu tố"):
-            st.info("""
-            - **RSI/MACD**: Chỉ số kỹ thuật cho biết trạng thái quá mua/quá bán.
-            - **VIX**: Chỉ số đo lường sự sợ hãi của thị trường.
-            - **Sentiment**: Tâm lý thị trường từ tin tức và mạng xã hội.
-            - **Returns_L1**: Lợi nhuận của ngày hôm trước (tính quán tính).
-            """)
+        # Sector allocation chart
+        if 'sector' in sr_df.columns:
+            sector_weights = sr_df.groupby('sector').size().reset_index(name='count')
+            fig_sr = px.pie(
+                sector_weights,
+                values='count',
+                names='sector',
+                title=f'Phân bổ Danh mục theo Ngành (Regime: {current_regime.title()})',
+                hole=0.4
+            )
+            fig_sr.update_layout(height=500)
+            st.plotly_chart(fig_sr, use_container_width=True)
+        
+        # Explanation
+        st.info(f"""
+        **Giải thích**: Với giai đoạn **{current_regime.title()}** hiện tại, hệ thống khuyến nghị 
+        tập trung vào các ngành có hiệu suất tốt trong chu kỳ này theo nghiên cứu của Fidelity và NBER.
+        """)
+        
+        # Full table
+        with st.expander("Xem chi tiết danh mục"):
+            st.dataframe(sr_df, use_container_width=True)
     else:
-        st.warning("💡 Chưa có kết quả Feature Importance. Hệ thống đang hiển thị dữ liệu mẫu.")
-        sample_fi = pd.DataFrame({
-            'feature': ['RSI_14', 'VIX_Level', 'News_Sentiment', 'EMA_50', 'Daily_Returns_L1', 'Volume_MA_10', 'Dollar_Index', 'MACD_Signal'],
-            'importance': [0.25, 0.18, 0.15, 0.12, 0.10, 0.08, 0.07, 0.05]
-        }).sort_values('importance', ascending=False)
-        
-        fig_sample = px.bar(
-            sample_fi, x='importance', y='feature', orientation='h', 
-            color='importance', color_continuous_scale='Blues'
-        )
-        st.plotly_chart(fig_sample, width='stretch')
-        st.markdown("Chạy lệnh sau để tính toán lại: `python -m models.causal.main`")
+        st.warning("💡 Chưa có kết quả Sector Rotation. Vui lòng chạy pipeline.")
+        st.code("python -m gold.sector_rotation")
