@@ -114,7 +114,7 @@ def run_batch_mode(skip_bronze: bool = False, skip_silver: bool = False, sync_r2
             download_silver_from_r2(SILVER_DIR)
         
         try:
-            from silver.run_all_processors import main as run_silver
+            from silver.run_all_processors import run_all_processors as run_silver
             run_silver()
             results['silver'] = 'success'
             print("   ✅ Silver processing complete")
