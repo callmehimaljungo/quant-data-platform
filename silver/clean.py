@@ -569,7 +569,8 @@ def main(incremental: bool = False, start_date: str = None):
                         help='Only process new data since last run')
     parser.add_argument('--start-date', '-s', type=str, default=None,
                         help='Process data from this date onwards (YYYY-MM-DD)')
-    args = parser.parse_args()
+    # Use parse_known_args to ignore unknown args from parent scripts (e.g., run_pipeline.py)
+    args, _ = parser.parse_known_args()
     
     # Use args if called from CLI, otherwise use function params
     incremental = args.incremental or incremental

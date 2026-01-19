@@ -149,7 +149,8 @@ def main() -> int:
                         help='Start date for incremental processing (YYYY-MM-DD)')
     parser.add_argument('--end-date', '-e', type=str, default=None,
                         help='End date for incremental processing (YYYY-MM-DD)')
-    args = parser.parse_args()
+    # Use parse_known_args to ignore unknown args from parent scripts
+    args, _ = parser.parse_known_args()
     
     try:
         if args.quick_update:
