@@ -91,7 +91,7 @@ def get_r2_object_last_modified(r2_key: str):
         return None
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800)  # 30 min - Faster file discovery
 def list_r2_files(prefix: str) -> list:
     """List files in R2 bucket with given prefix"""
     client = get_r2_client()
@@ -110,7 +110,7 @@ def list_r2_files(prefix: str) -> list:
         return []
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800)  # 30 min - Catch news/economic updates
 def load_latest_from_lakehouse(lakehouse_prefix: str) -> pd.DataFrame:
     """Load the latest parquet file from a lakehouse folder in R2"""
     files = list_r2_files(lakehouse_prefix)

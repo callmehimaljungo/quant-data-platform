@@ -36,7 +36,7 @@ def get_cache_key() -> str:
     return "default"
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)  # 10 min - Strategies update 1x/day
 def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
     """Load risk metrics from Gold layer (cache first, then R2, then local)"""
     
@@ -116,7 +116,7 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
     return clean_financial_data(df)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)  # 10 min - Sectors update 1x/day
 def load_sector_metrics(_cache_key: str = None) -> pd.DataFrame:
     """Load sector-level metrics"""
     if R2_LOADER_AVAILABLE:
