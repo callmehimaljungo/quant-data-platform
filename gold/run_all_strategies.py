@@ -89,7 +89,7 @@ def run_all_strategies(start_date: str = None, end_date: str = None, quick_updat
         # Convert dict result to DataFrame if needed
         if isinstance(momentum_result, dict):
             from utils import lakehouse_to_pandas
-            from config import GOLD_DIR
+            # from config import GOLD_DIR # Use global import
             results['momentum'] = lakehouse_to_pandas(GOLD_DIR / 'momentum_portfolio_lakehouse')
         else:
             results['momentum'] = momentum_result
@@ -101,7 +101,7 @@ def run_all_strategies(start_date: str = None, end_date: str = None, quick_updat
     # Check for overlapping stocks
     all_tickers = set()
     for strategy_name, df in results.items():
-        if len(df) > 0:
+        if df is not None and len(df) > 0:
             tickers = set(df['ticker'].tolist())
             overlap = all_tickers.intersection(tickers)
             if overlap:

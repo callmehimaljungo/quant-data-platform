@@ -39,7 +39,7 @@ from dashboard.components.sidebar import render_sidebar
 render_sidebar()
 
 # Page Title
-st.title("🏠 Tổng quan Portfolio")
+st.title("🏠 Quant Dashboard")
 
 # =============================================================================
 # DATA LOADING
