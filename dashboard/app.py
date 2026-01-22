@@ -45,105 +45,84 @@ st.title("🏠 Quant Dashboard")
 # DATA LOADING
 # =============================================================================
 cache_key = get_cache_key()
-# This function loads from R2 if configured and available
 risk_df = load_risk_metrics(cache_key)
 
 if risk_df is None:
-    st.error("Không thể tải dữ liệu. Vui lòng kiểm tra kết nối R2 hoặc chạy pipeline Local.")
+    st.error("❌ Không thể tải dữ liệu. Vui lòng kiểm tra kết nối R2 hoặc chạy pipeline Local.")
     st.stop()
 
+# Derive Market Stats
+median_sharpe = risk_df['sharpe_ratio'].median()
+market_regime = "🟢 Bull Market" if median_sharpe > 1.0 else ("🔴 Bear Market" if median_sharpe < 0.5 else "🟡 Neutral")
+
+# Quality Signals (thay cho Volatility & Max Drawdown vô nghĩa)
+high_sharpe_count = len(risk_df[risk_df['sharpe_ratio'] > 2.0])  # Opportunities
+quality_stocks = len(risk_df[risk_df['sharpe_ratio'] > 1.0])    # Mã chất lượng (Sharpe > 1)
+healthy_stocks = len(risk_df[risk_df['max_drawdown'] > -30])    # Mã khỏe (DD > -30%)
+health_pct = (healthy_stocks / len(risk_df) * 100) if len(risk_df) > 0 else 0
+
 # =============================================================================
-# KPI Cards
+# MARKET PULSE HEADER
 # =============================================================================
+st.markdown(f"### ⚡ Market Pulse: {market_regime}")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric(
-        "Tổng số Ticker",
-        f"{len(risk_df):,}",
-        help="Số lượng cổ phiếu được phân tích"
-    )
+    st.metric("Total Tickers", f"{len(risk_df):,}", f"{high_sharpe_count} opportunities")
 
 with col2:
-    avg_sharpe = risk_df['sharpe_ratio'].median()
-    st.metric(
-        "Sharpe Ratio (Median)",
-        f"{avg_sharpe:.2f}",
-        help="Sharpe Ratio (dùng Median để loại bỏ outlier)"
-    )
+    st.metric("Market Sharpe (Median)", f"{median_sharpe:.2f}", delta_color="normal")
 
 with col3:
-    # Filter only extreme outliers (> 500%)
-    valid_vol = risk_df[risk_df['volatility'] < 500]['volatility']
-    avg_vol = valid_vol.median() if len(valid_vol) > 0 else risk_df['volatility'].median()
-        
-    st.metric(
-        "Volatility (Median)",
-        f"{avg_vol:.1f}%",
-        help="Độ biến động hàng năm (Annualized Volatility)"
-    )
+    st.metric("Mã chất lượng", f"{quality_stocks:,}", help="Số mã có Sharpe Ratio > 1.0")
 
 with col4:
-    avg_mdd = risk_df['max_drawdown'].median()
-    st.metric(
-        "Max Drawdown (Median)",
-        f"{avg_mdd:.1f}%",
-        help="Mức sụt giảm tối đa từ đỉnh"
-    )
+    st.metric("Sức khỏe thị trường", f"{health_pct:.0f}%", help="% mã có Max Drawdown > -30%")
 
 st.markdown("---")
 
 # =============================================================================
-# Charts
+# STRATEGY SIGNALS (TABS)
 # =============================================================================
-col1, col2 = st.columns(2)
+st.subheader("🎯 Strategy Signals")
+tab1, tab2, tab3 = st.tabs(["🏆 High Sharpe Alpha", "🛡️ Low Volatility Defense", "🔥 Momentum Movers"])
+
+with tab1:
+    st.markdown("**Top cổ phiếu có hiệu suất điều chỉnh rủi ro tốt nhất (Sharpe > 2.0)**")
+    top_sharpe = risk_df.nlargest(20, 'sharpe_ratio')[['ticker', 'sector', 'sharpe_ratio', 'volatility', 'max_drawdown']]
+    st.dataframe(format_dataframe(top_sharpe), use_container_width=True, column_config=get_column_config())
+
+with tab2:
+    st.markdown("**Top cổ phiếu biến động thấp nhất (Volatility < 20%)**")
+    low_vol = risk_df.nsmallest(20, 'volatility')[['ticker', 'sector', 'sharpe_ratio', 'volatility', 'max_drawdown']]
+    st.dataframe(format_dataframe(low_vol), use_container_width=True, column_config=get_column_config())
+    
+with tab3:
+    st.markdown("**Top cổ phiếu tăng trưởng mạnh nhất (Daily Return High)**")
+    # Proxy momentum by avg_ret if available
+    if 'avg_ret' in risk_df.columns:
+        risk_df['est_annual_ret'] = risk_df['avg_ret'] * 252 * 100
+        top_mom = risk_df.nlargest(20, 'est_annual_ret')[['ticker', 'sector', 'est_annual_ret', 'volatility', 'sharpe_ratio']]
+        st.dataframe(format_dataframe(top_mom), use_container_width=True, column_config=get_column_config())
+    else:
+        st.info("Momentum data not available yet.")
+
+# =============================================================================
+# SECTOR OVERVIEW
+# =============================================================================
+st.markdown("---")
+col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("📊 Phân phối Sharpe Ratio")
-    fig = px.histogram(
-        risk_df, 
-        x='sharpe_ratio',
-        nbins=30,
-        color_discrete_sequence=['#1f77b4']
-    )
-    fig.update_layout(height=400)
-    st.plotly_chart(fig, width='stretch')
+    fig_hist = px.histogram(risk_df, x='sharpe_ratio', nbins=50, title="Market Breadth (Sharpe Distribution)", color_discrete_sequence=['#2ecc71'])
+    fig_hist.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20))
+    st.plotly_chart(fig_hist, use_container_width=True)
 
 with col2:
-    st.subheader("📈 Hiệu suất theo Sector")
-    # Derive sector metrics
+    st.subheader("🏢 Ngành dẫn sóng")
     if 'sector' in risk_df.columns:
-        sector_agg = risk_df.groupby('sector').agg({
-            'sharpe_ratio': 'median',
-            'ticker': 'count'
-        }).reset_index()
-        sector_agg.columns = ['sector', 'sharpe_ratio', 'num_tickers']
-        sector_agg = sector_agg.sort_values('sharpe_ratio', ascending=True)
-    else:
-        sector_agg = create_sample_sector_metrics().sort_values('sharpe_ratio', ascending=True)
-        
-    fig = px.bar(
-        sector_agg,
-        x='sharpe_ratio',
-        y='sector',
-        orientation='h',
-        color='sharpe_ratio',
-        color_continuous_scale='RdYlGn',
-        hover_data=['num_tickers'] if 'num_tickers' in sector_agg.columns else None
-    )
-    fig.update_layout(height=400, xaxis_tickangle=-45)
-    st.plotly_chart(fig, width='stretch')
-
-# =============================================================================
-# Top Performers Table
-# =============================================================================
-st.subheader("🏆 Top 10 theo Sharpe Ratio")
-display_cols = ['ticker', 'sector', 'sharpe_ratio', 'volatility', 'max_drawdown']
-available_cols = [c for c in display_cols if c in risk_df.columns]
-top_10 = risk_df.nlargest(10, 'sharpe_ratio')[available_cols]
-
-st.dataframe(
-    format_dataframe(top_10), 
-    width='stretch', 
-    column_config=get_column_config()
-)
+        sector_perf = risk_df.groupby('sector')['sharpe_ratio'].median().sort_values(ascending=False).head(10)
+        fig_bar = px.bar(sector_perf, orientation='h', title="Top Sectors vs Median Sharpe", color=sector_perf.values, color_continuous_scale='Viridis')
+        fig_bar.update_layout(height=350, showlegend=False, xaxis_title="Median Sharpe")
+        st.plotly_chart(fig_bar, use_container_width=True)
