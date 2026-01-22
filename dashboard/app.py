@@ -58,8 +58,9 @@ market_regime = "🟢 Bull Market" if median_sharpe > 1.0 else ("🔴 Bear Marke
 # Quality Signals (thay cho Volatility & Max Drawdown vô nghĩa)
 high_sharpe_count = len(risk_df[risk_df['sharpe_ratio'] > 2.0])  # Opportunities
 quality_stocks = len(risk_df[risk_df['sharpe_ratio'] > 1.0])    # Mã chất lượng (Sharpe > 1)
-healthy_stocks = len(risk_df[risk_df['max_drawdown'] > -30])    # Mã khỏe (DD > -30%)
-health_pct = (healthy_stocks / len(risk_df) * 100) if len(risk_df) > 0 else 0
+# Median Drawdown (lọc bỏ mã phá sản < -95%)
+valid_dd = risk_df[risk_df['max_drawdown'] > -95]['max_drawdown']
+median_dd = valid_dd.median() if len(valid_dd) > 0 else -50.0
 
 # =============================================================================
 # MARKET PULSE HEADER
@@ -77,7 +78,7 @@ with col3:
     st.metric("Mã chất lượng", f"{quality_stocks:,}", help="Số mã có Sharpe Ratio > 1.0")
 
 with col4:
-    st.metric("Sức khỏe thị trường", f"{health_pct:.0f}%", help="% mã có Max Drawdown > -30%")
+    st.metric("Median Drawdown", f"{median_dd:.1f}%", help="Median Max Drawdown (loại mã phá sản)")
 
 st.markdown("---")
 
