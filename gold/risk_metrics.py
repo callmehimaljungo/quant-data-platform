@@ -85,7 +85,7 @@ def get_dynamic_risk_free_rate(year: int) -> float:
 # LOAD DATA (MEMORY OPTIMIZED)
 # =============================================================================
 # Only load columns needed for risk calculations
-REQUIRED_COLUMNS = ['ticker', 'date', 'close', 'daily_return', 'sector']
+REQUIRED_COLUMNS = ['ticker', 'date', 'close', 'daily_return']
 
 
 def load_silver_data() -> pd.DataFrame:
@@ -127,7 +127,14 @@ def load_silver_data() -> pd.DataFrame:
         logger.info(f"Loading from Silver Parquet: {SILVER_PARQUET_PATH}")
         # Load only required columns
         logger.info(f"  Loading only columns: {REQUIRED_COLUMNS}")
-        return pd.read_parquet(SILVER_PARQUET_PATH, columns=REQUIRED_COLUMNS)
+        df = pd.read_parquet(SILVER_PARQUET_PATH, columns=REQUIRED_COLUMNS)
+        
+        # Data Quality Filter: Remove extreme outliers
+        original_count = len(df)
+        logger.info(f"  Before filtering: {original_count:,} rows")
+        
+        # Will filter after metrics are calculated
+        return df
     else:
         raise FileNotFoundError("No Silver data found. Run silver/clean_delta.py first.")
 
@@ -309,7 +316,19 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
     # Filter out tickers with insufficient data
     basic = basic[basic['num_records'] >= 30]
     
-    logger.info(f"[OK] Calculated metrics for {len(basic):,} tickers")
+    # Data Quality Filter: Remove extreme outliers
+    # These values indicate data errors or untradeable assets
+    original_count = len(basic)
+    
+    basic = basic[
+        (basic['max_drawdown'] > -0.95) &  # -95% in decimal
+        (basic['volatility'] <= 4.0) &      # 400% in decimal  
+        (basic['sharpe_ratio'].between(-10, 20))
+    ]
+    
+    filtered_count = original_count - len(basic)
+    logger.info(f"[FILTER] Removed {filtered_count:,} outliers ({filtered_count/original_count*100:.1f}%)")
+    logger.info(f"[OK] Calculated metrics for {len(basic):,} quality tickers")
     
     # Final cleanup
     gc.collect()

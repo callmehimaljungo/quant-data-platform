@@ -52,11 +52,14 @@ with tab1:
             df['ate_pct'] = df['adjusted_ate'] * 100
             
             st.markdown("### 📊 Tác động Nhân quả (ATE)")
+            # Color by Sign of ATE (Positive = Green, Negative = Red)
+            df['color_type'] = df['ate_pct'].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
+            
             fig = px.bar(df.sort_values('ate_pct'), 
                         x='ate_pct', y='treatment_clean',
                         orientation='h',
-                        color='significant',
-                        color_discrete_map={True: '#00CC96', False: '#EF553B'},
+                        color='color_type',
+                        color_discrete_map={'Positive': '#00CC96', 'Negative': '#EF553B'},
                         labels={'ate_pct': 'Average Treatment Effect (%)', 
                                'treatment_clean': 'Treatment'},
                         title='Tác động của các yếu tố lên lợi nhuận cổ phiếu')

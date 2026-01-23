@@ -39,8 +39,7 @@ from dashboard.components.sidebar import render_sidebar
 render_sidebar()
 
 # Page Title
-st.title("🏠 Quant Dashboard (v2.1 - Forced Dark Mode)")
-st.text("Debug: If this text appears, code has updated.")
+st.title("🏠 Quant Dashboard")
 
 # =============================================================================
 # DATA LOADING
@@ -66,20 +65,20 @@ median_dd = valid_dd.median() if len(valid_dd) > 0 else -50.0
 # =============================================================================
 # MARKET PULSE HEADER
 # =============================================================================
-st.markdown(f"### ⚡ Market Pulse: {market_regime}")
+st.markdown(f"### ⚡ Nhịp Thị Trường: {market_regime}")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.metric("Total Tickers", f"{len(risk_df):,}", f"{high_sharpe_count} opportunities")
+    st.metric("Tổng số Mã", f"{len(risk_df):,}", f"{high_sharpe_count} cơ hội")
 
 with col2:
-    st.metric("Market Sharpe (Median)", f"{median_sharpe:.2f}", delta_color="normal")
+    st.metric("Sharpe Thị Trường (TB)", f"{median_sharpe:.2f}", delta_color="normal")
 
 with col3:
     st.metric("Mã chất lượng", f"{quality_stocks:,}", help="Số mã có Sharpe Ratio > 1.0")
 
 with col4:
-    st.metric("Median Drawdown", f"{median_dd:.1f}%", help="Median Max Drawdown (loại mã phá sản)")
+    st.metric("Sụt giảm Trung vị", f"{median_dd:.1f}%", help="Median Max Drawdown (loại mã phá sản)")
 
 st.markdown("---")
 

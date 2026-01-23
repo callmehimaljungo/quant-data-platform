@@ -351,6 +351,24 @@ def run_sector_rotation() -> pd.DataFrame:
     logger.info(f"  [OK] Prices: {len(df_prices):,} rows")
     logger.info(f"  Memory usage: {df_prices.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
     
+    # Data Quality Filter: Use only tickers from quality risk_metrics
+    # This ensures we exclude extreme outliers (Vol > 400%, MaxDD < -95%, etc.)
+    quality_tickers_file = GOLD_DIR / 'cache' / 'risk_metrics.parquet'
+    if quality_tickers_file.exists():
+        try:
+            quality_df = pd.read_parquet(quality_tickers_file, columns=['ticker'])
+            quality_tickers = set(quality_df['ticker'].unique())
+            
+            original_count = len(df_prices)
+            df_prices = df_prices[df_prices['ticker'].isin(quality_tickers)]
+            filtered_count = original_count - len(df_prices)
+            
+            logger.info(f"  [FILTER] Removed {filtered_count:,} rows from {len(df_prices['ticker'].unique()):,} quality tickers")
+        except Exception as e:
+            logger.warning(f"  [WARN] Could not load quality ticker list: {e}")
+    else:
+        logger.warning(f"  [WARN] Quality ticker list not found, using all tickers")
+    
     # Fix sectors in prices data before building portfolio
     logger.info("Updating sector metadata in price data...")
     df_prices = add_sector_metadata(df_prices, ticker_col='ticker')

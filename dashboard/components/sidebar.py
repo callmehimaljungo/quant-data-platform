@@ -34,8 +34,13 @@ def render_sidebar():
     # Render Status
     if r2_ready:
         st.sidebar.success("✅ **Hệ thống: Online**\n\nCloud R2: Kết nối")
-        # Try to get last update from R2
-        r2_time = get_r2_object_last_modified('processed/gold/cache/realtime_metrics.parquet')
+        # Try to get last update from R2 - Check risk_metrics.parquet (Main Data)
+        r2_time = get_r2_object_last_modified('processed/gold/cache/risk_metrics.parquet')
+        
+        # Fallback to realtime if risk_metrics not found
+        if not r2_time:
+            r2_time = get_r2_object_last_modified('processed/gold/cache/realtime_metrics.parquet')
+            
         if r2_time:
             last_update = r2_time
             

@@ -62,8 +62,14 @@ else:
     sectors = []
     
 if sectors:
-    selected_sector = st.selectbox("Chọn Sector", sectors)
-    sector_stocks = risk_df[risk_df['sector'] == selected_sector]
+    # Add "All Sectors" option
+    sectors_with_all = ["— Tất cả Ngành —"] + sectors
+    selected_sector = st.selectbox("Chọn Sector", sectors_with_all)
+    
+    if selected_sector == "— Tất cả Ngành —":
+        sector_stocks = risk_df
+    else:
+        sector_stocks = risk_df[risk_df['sector'] == selected_sector]
     
     col1, col2, col3 = st.columns(3)
     with col1:
