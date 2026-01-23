@@ -65,7 +65,7 @@ median_dd = valid_dd.median() if len(valid_dd) > 0 else -50.0
 # =============================================================================
 # MARKET PULSE HEADER
 # =============================================================================
-st.markdown(f"### ⚡ Nhịp Thị Trường: {market_regime}")
+st.markdown(f"### ⚡ Nhịp Thị Trường")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
