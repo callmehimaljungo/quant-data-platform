@@ -42,22 +42,47 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
     
     df = None
     
-    # Try Gold cache first (from pipeline batch run)
+    # Smart Sync: Check if R2 is newer than local
+    use_r2 = False
     cache_file = GOLD_DIR / 'cache' / 'risk_metrics.parquet'
-    if cache_file.exists():
+    
+    if R2_LOADER_AVAILABLE:
+        r2_key = 'processed/gold/cache/risk_metrics.parquet'
+        # Get timestamps
+        r2_time = get_r2_object_last_modified(r2_key) # efficient head request (cached)
+        
+        if r2_time:
+            if cache_file.exists():
+                local_ts = cache_file.stat().st_mtime
+                # Convert to UTC for comparison if possible, or just naive comparison
+                # R2 time is timezone-aware (UTC). Local is usually system time.
+                # Simple logic: If R2 is significantly newer (> 5 mins) or local is very old.
+                # Better: compare directly using timestamp
+                from datetime import timezone
+                local_dt = datetime.fromtimestamp(local_ts).astimezone(timezone.utc)
+                
+                if r2_time > local_dt:
+                    use_r2 = True
+            else:
+                use_r2 = True
+    
+    df = None
+    
+    # 1. Try R2 if it's newer
+    if use_r2:
+        df = load_parquet_from_r2(r2_key)
+        
+    # 2. Try Gold cache (Local) if R2 failed or R2 wasn't newer
+    if df is None and cache_file.exists():
         df = pd.read_parquet(cache_file)
     
-    # Try strategy weights from cache
-    if df is None:
-        for strategy in ['low_beta_quality', 'sector_rotation', 'sentiment_allocation']:
-            weights_file = GOLD_DIR / 'cache' / f'{strategy}_weights.parquet'
-            if weights_file.exists():
-                df = pd.read_parquet(weights_file)
-                break
+    # 3. If still None (Local missing AND R2 failed), try R2 as fallback
+    if df is None and R2_LOADER_AVAILABLE and not use_r2: 
+        # (This avoids re-downloading if we already tried R2 above)
+        df = load_parquet_from_r2(r2_key)
 
-    # Try R2 cache folder
-    if df is None and R2_LOADER_AVAILABLE:
-        # Try realtime metrics first
+    # Try strategy weights from cache (Legacy fallback)
+    if df is None:
         df = load_parquet_from_r2('processed/gold/cache/realtime_metrics.parquet')
         
         # Fallback to strategy weights
