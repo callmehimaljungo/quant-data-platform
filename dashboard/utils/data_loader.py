@@ -51,20 +51,17 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
         # Get timestamps
         r2_time = get_r2_object_last_modified(r2_key) # efficient head request (cached)
         
+        # FORCE R2 STRATEGY
+        # We always prefer R2 data because Streamlit Cloud local cache is ephemeral/unreliable
+        # and we want to ensure the latest data is shown.
         if r2_time:
-            if cache_file.exists():
-                local_ts = cache_file.stat().st_mtime
-                # Convert to UTC for comparison if possible, or just naive comparison
-                # R2 time is timezone-aware (UTC). Local is usually system time.
-                # Simple logic: If R2 is significantly newer (> 5 mins) or local is very old.
-                # Better: compare directly using timestamp
-                from datetime import timezone
-                local_dt = datetime.fromtimestamp(local_ts).astimezone(timezone.utc)
-                
-                if r2_time > local_dt:
-                    use_r2 = True
-            else:
-                use_r2 = True
+             use_r2 = True
+             # Optional: Log the timestamp for debugging
+             print(f"R2 Data Available: {r2_time}")
+        else:
+             # If get_r2_object_last_modified returned None, maybe R2 is down?
+             # Only then fallback to local using the old logic
+             use_r2 = False
     
     df = None
     
