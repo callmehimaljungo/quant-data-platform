@@ -39,7 +39,8 @@ from dashboard.components.sidebar import render_sidebar
 render_sidebar()
 
 # Page Title
-st.title("🏠 Quant Dashboard")
+st.title("🏠 Quant Dashboard (v2.1 - Forced Dark Mode)")
+st.text("Debug: If this text appears, code has updated.")
 
 # =============================================================================
 # DATA LOADING
