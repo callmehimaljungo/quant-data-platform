@@ -51,17 +51,15 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
         # Get timestamps
         r2_time = get_r2_object_last_modified(r2_key) # efficient head request (cached)
         
-        # FORCE R2 STRATEGY
-        # We always prefer R2 data because Streamlit Cloud local cache is ephemeral/unreliable
-        # and we want to ensure the latest data is shown.
-        if r2_time:
-             use_r2 = True
-             # Optional: Log the timestamp for debugging
-             print(f"R2 Data Available: {r2_time}")
-        else:
-             # If get_r2_object_last_modified returned None, maybe R2 is down?
-             # Only then fallback to local
-             use_r2 = False
+        # FORCE R2 STRATEGY -> TEMPORARILY DISABLED
+        # R2 data currently has capped values (Vol 500%, DD -99%). 
+        # We prefer local cache which has correct calculated data (~3734 tickers).
+        # Uncomment the line below when R2 data is fixed.
+        # if r2_time:
+        #      use_r2 = True
+        
+        # Current Logic: Always prefer local if available, only use R2 if local is missing.
+        use_r2 = False
     
     df = None
     
