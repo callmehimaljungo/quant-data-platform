@@ -19,7 +19,7 @@ from config import SILVER_DIR, GOLD_DIR, LOG_FORMAT
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
-OUTPUT_PATH = GOLD_DIR / 'momentum_portfolio_lakehouse'
+OUTPUT_PATH = GOLD_DIR / 'momentum_lakehouse'
 
 
 class MLMomentumStrategy:
@@ -144,6 +144,23 @@ def run_momentum_strategy(test_mode: bool = False) -> Dict:
     
     df = pd.read_parquet(parquet_path)
     logger.info(f"[OK] Loaded {len(df):,} rows")
+    
+    # Data Quality Filter: Use only tickers from quality risk_metrics (80/70 Standard)
+    # This ensures Momentum Strategy inherits the refined 2,917 ticker universe.
+    quality_tickers_file = GOLD_DIR / 'cache' / 'risk_metrics.parquet'
+    if quality_tickers_file.exists():
+        try:
+            quality_df = pd.read_parquet(quality_tickers_file, columns=['ticker'])
+            quality_tickers = set(quality_df['ticker'].unique())
+            
+            original_tickers = df['ticker'].nunique()
+            df = df[df['ticker'].isin(quality_tickers)]
+            
+            logger.info(f"  [FILTER] Inherited 80/70 quality universe: {df['ticker'].nunique():,} tickers (from {original_tickers:,})")
+        except Exception as e:
+            logger.warning(f"  [WARN] Could not load quality ticker list: {e}")
+    else:
+        logger.warning(f"  [WARN] Quality ticker list not found, using all available silver data")
     
     # Load ML predictions if available
     ml_predictions = None

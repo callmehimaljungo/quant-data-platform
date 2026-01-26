@@ -30,6 +30,7 @@ from dashboard.utils.data_loader import (
     load_risk_metrics, 
     get_cache_key, 
     load_sector_metrics,
+    load_strategy_weights,
     create_sample_sector_metrics
 )
 from dashboard.utils.formatting import format_dataframe, get_column_config
@@ -58,9 +59,8 @@ market_regime = "🟢 Bull Market" if median_sharpe > 1.0 else ("🔴 Bear Marke
 # Quality Signals (thay cho Volatility & Max Drawdown vô nghĩa)
 high_sharpe_count = len(risk_df[risk_df['sharpe_ratio'] > 2.0])  # Opportunities
 quality_stocks = len(risk_df[risk_df['sharpe_ratio'] > 1.0])    # Mã chất lượng (Sharpe > 1)
-# Median Drawdown (lọc bỏ mã phá sản < -95%)
-valid_dd = risk_df[risk_df['max_drawdown'] > -95]['max_drawdown']
-median_dd = valid_dd.median() if len(valid_dd) > 0 else -50.0
+# Median Drawdown (đã được lọc rủi ro cực hạn > -90% ở loader)
+median_dd = risk_df['max_drawdown'].median() if not risk_df.empty else -50.0
 
 # =============================================================================
 # MARKET PULSE HEADER
@@ -117,14 +117,16 @@ with tab2:
     st.dataframe(format_dataframe(low_vol), use_container_width=True, column_config=get_column_config())
     
 with tab3:
-    st.markdown("**Top cổ phiếu tăng trưởng mạnh nhất (Daily Return High)**")
-    # Proxy momentum by avg_ret if available
-    if 'avg_ret' in risk_df.columns:
-        risk_df['est_annual_ret'] = risk_df['avg_ret'] * 252 * 100
-        top_mom = risk_df.nlargest(20, 'est_annual_ret')[['ticker', 'sector', 'est_annual_ret', 'volatility', 'sharpe_ratio']]
-        st.dataframe(format_dataframe(top_mom), use_container_width=True, column_config=get_column_config())
+    st.markdown("**Top cổ phiếu tăng trưởng mạnh nhất (12-1 Month Momentum)**")
+    mom_df = load_strategy_weights('momentum', cache_key)
+    
+    if not mom_df.empty:
+        # Momentum strategy output usually has 'momentum' and 'weight'
+        cols = ['ticker', 'sector', 'momentum', 'weight']
+        display_cols = [c for c in cols if c in mom_df.columns]
+        st.dataframe(format_dataframe(mom_df[display_cols]), use_container_width=True, column_config=get_column_config())
     else:
-        st.info("Momentum data not available yet.")
+        st.info("Momentum data not available yet. Run models/momentum_strategy.py first.")
 
 # =============================================================================
 # SECTOR OVERVIEW

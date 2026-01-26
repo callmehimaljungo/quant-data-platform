@@ -94,30 +94,4 @@ def render_sidebar():
     utc_str = f"UTC+{utc_offset}" if utc_offset >= 0 else f"UTC{utc_offset}"
     st.sidebar.caption(f"🕒 Server Time: {datetime.datetime.now().strftime('%H:%M')} ({utc_str})")
     
-    # --- HEALTH CHECK ---
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🛡️ Data Health")
-    
-    # Load data for validation (cached)
-    risk_df = load_risk_metrics(get_cache_key())
-    
-    if risk_df is not None:
-        validator = FinancialDataValidator()
-        val_res = validator.validate(risk_df)
-        
-        if val_res['is_valid']:
-            st.sidebar.success(f"✅ Hợp lệ ({len(risk_df)} mã)")
-        else:
-            err_count = val_res['summary']['error_count']
-            warn_count = val_res['summary']['warning_count']
-            
-            if err_count > 0:
-                st.sidebar.error(f"❌ {err_count} Lỗi nghiêm trọng")
-            elif warn_count > 0:
-                st.sidebar.warning(f"⚠️ {warn_count} Cảnh báo")
-                
-            with st.sidebar.expander("Chi tiết vấn đề"):
-                for err in val_res['errors']:
-                    st.write(f"🔴 **{err.column}**: {err.message}")
-                for warn in val_res['warnings']:
-                    st.write(f"🟡 **{warn.column}**: {warn.message}")
+    # Removed Data Health Section per user request

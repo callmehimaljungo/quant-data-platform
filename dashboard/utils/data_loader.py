@@ -60,7 +60,7 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
              print(f"R2 Data Available: {r2_time}")
         else:
              # If get_r2_object_last_modified returned None, maybe R2 is down?
-             # Only then fallback to local using the old logic
+             # Only then fallback to local
              use_r2 = False
     
     df = None
@@ -135,7 +135,13 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
     except Exception:
         pass
     
-    return clean_financial_data(df)
+    df = clean_financial_data(df)
+    
+    # All risk filtering (Vol < 80%, DD > -70%) is now handled at the Gold Layer (gold/risk_metrics.py)
+    # The dashboard simply loads the refined ticker universe.
+    print(f"Loaded {len(df):,} tickers from Gold layer.")
+    
+    return df
 
 
 @st.cache_data(ttl=600)  # 10 min - Sectors update 1x/day
@@ -168,6 +174,21 @@ def create_sample_risk_metrics() -> pd.DataFrame:
         'avg_daily_return': np.random.uniform(-0.001, 0.002, len(tickers)),
         'avg_volume': np.random.uniform(1e6, 1e8, len(tickers)),
     })
+
+@st.cache_data(ttl=600)
+def load_strategy_weights(strategy_name: str, _cache_key: str = None) -> pd.DataFrame:
+    """Load portfolio weights for a specific strategy from Gold cache"""
+    cache_file = GOLD_DIR / 'cache' / f'{strategy_name}_weights.parquet'
+    
+    if cache_file.exists():
+        try:
+            return pd.read_parquet(cache_file)
+        except Exception as e:
+            print(f"Error loading {strategy_name} cache: {e}")
+            return pd.DataFrame()
+            
+    return pd.DataFrame()
+
 
 def create_sample_sector_metrics() -> pd.DataFrame:
     return pd.DataFrame({

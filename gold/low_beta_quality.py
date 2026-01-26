@@ -344,6 +344,24 @@ def run_low_beta_quality() -> pd.DataFrame:
     # Load data
     df_prices, df_economic, spy_returns = load_all_data()
     
+    # Data Quality Filter: Use only tickers from quality risk_metrics (80/70 Standard)
+    # This ensures Strategy 1 inherits the refined 2,917 ticker universe.
+    quality_tickers_file = GOLD_DIR / 'cache' / 'risk_metrics.parquet'
+    if quality_tickers_file.exists():
+        try:
+            quality_df = pd.read_parquet(quality_tickers_file, columns=['ticker'])
+            quality_tickers = set(quality_df['ticker'].unique())
+            
+            original_count = len(df_prices)
+            df_prices = df_prices[df_prices['ticker'].isin(quality_tickers)]
+            filtered_count = original_count - len(df_prices)
+            
+            logger.info(f"  [FILTER] Inherited 80/70 quality universe: {len(df_prices['ticker'].unique()):,} tickers")
+        except Exception as e:
+            logger.warning(f"  [WARN] Could not load quality ticker list: {e}")
+    else:
+        logger.warning(f"  [WARN] Quality ticker list not found, using all available silver data")
+    
     # Build portfolio
     df_portfolio = build_low_beta_quality_portfolio(df_prices, spy_returns, df_economic)
     

@@ -316,19 +316,20 @@ def calculate_ticker_metrics_vectorized(df: pd.DataFrame, spy_returns: pd.Series
     # Filter out tickers with insufficient data
     basic = basic[basic['num_records'] >= 30]
     
-    # Data Quality Filter: Remove extreme outliers
-    # These values indicate data errors or untradeable assets
+    # Data Quality Filter (Refined): 80/70 Standard
+    # This filter reduces the universe to ~3000 quality tickers.
+    # Applied here in Gold Layer to ensure consistency across all consumers.
     original_count = len(basic)
     
     basic = basic[
-        (basic['max_drawdown'] > -0.95) &  # -95% in decimal
-        (basic['volatility'] <= 4.0) &      # 400% in decimal  
+        (basic['max_drawdown'] > -0.7) &    # -70% max drawdown (Safe threshold)
+        (basic['volatility'] < 0.8) &       # 80% annual volatility (Safe-Aggressive)
         (basic['sharpe_ratio'].between(-10, 20))
     ]
     
     filtered_count = original_count - len(basic)
-    logger.info(f"[FILTER] Removed {filtered_count:,} outliers ({filtered_count/original_count*100:.1f}%)")
-    logger.info(f"[OK] Calculated metrics for {len(basic):,} quality tickers")
+    logger.info(f"[FILTER] 80/70 Standard applied: Removed {filtered_count:,} outliers")
+    logger.info(f"[OK] Universe refined to {len(basic):,} quality tickers")
     
     # Final cleanup
     gc.collect()
