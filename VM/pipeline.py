@@ -162,7 +162,7 @@ def calculate_gold_optimized():
         df = df.rename(columns={'last_date': 'date'})
         
         CACHE_RISK.parent.mkdir(parents=True, exist_ok=True)
-        df[['ticker', 'sector', 'sharpe_ratio', 'volatility', 'max_drawdown', 'date']].to_parquet(CACHE_RISK)
+        df[['ticker', 'sector', 'sharpe_ratio', 'volatility', 'max_drawdown', 'avg_ret', 'date']].to_parquet(CACHE_RISK)
         
         # Sector median
         sec = df.groupby('sector').agg({'ticker':'count', 'sharpe_ratio':'median', 'volatility':'median', 'max_drawdown':'median'}).reset_index()

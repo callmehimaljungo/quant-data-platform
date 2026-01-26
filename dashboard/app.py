@@ -66,19 +66,37 @@ median_dd = valid_dd.median() if len(valid_dd) > 0 else -50.0
 # MARKET PULSE HEADER
 # =============================================================================
 st.markdown(f"### ⚡ Nhịp Thị Trường")
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col_search = st.columns([1, 1, 2])
 
 with col1:
-    st.metric("Tổng số Mã", f"{len(risk_df):,}", f"{high_sharpe_count} cơ hội")
+    st.metric("Tổng số Mã", f"{len(risk_df):,}")
 
 with col2:
     st.metric("Sharpe Thị Trường (TB)", f"{median_sharpe:.2f}", delta_color="normal")
 
-with col3:
-    st.metric("Mã chất lượng", f"{quality_stocks:,}", help="Số mã có Sharpe Ratio > 1.0")
-
-with col4:
-    st.metric("Sụt giảm Trung vị", f"{median_dd:.1f}%", help="Median Max Drawdown (loại mã phá sản)")
+with col_search:
+    # Ticker Search Feature
+    search_ticker = st.selectbox(
+        "🔍 Tra cứu mã nhanh",
+        options=[""] + sorted(risk_df['ticker'].tolist()),
+        index=0,
+        placeholder="Nhập mã (VD: AAPL, TSLA...)",
+        label_visibility="collapsed"
+    )
+    
+    if search_ticker:
+        t_data = risk_df[risk_df['ticker'] == search_ticker].iloc[0]
+        # Modern display for searched ticker
+        st.markdown(f"""
+        <div style="background-color: #1e1e1e; padding: 10px; border-radius: 8px; border: 1px solid #333;">
+            <span style="font-size: 1.2rem; font-weight: bold; color: #2ecc71;">{search_ticker}</span> | 
+            <b>Sharpe:</b> {t_data['sharpe_ratio']:.2f} | 
+            <b>Biến động:</b> {t_data['volatility']:.1f}% | 
+            <b>Sụt giảm (MaxDD):</b> {t_data['max_drawdown']:.1f}%
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info("Tìm kiếm mã để xem nhanh các chỉ số rủi ro.")
 
 st.markdown("---")
 

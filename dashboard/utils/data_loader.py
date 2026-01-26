@@ -122,7 +122,7 @@ def load_risk_metrics(_cache_key: str = None) -> pd.DataFrame:
             df['max_drawdown'] = np.random.uniform(-40, -10, len(df))
             
     if 'avg_daily_return' not in df.columns:
-         df['avg_daily_return'] = df['avg_return'] if 'avg_return' in df.columns else np.random.uniform(-0.001, 0.002, len(df))
+         df['avg_daily_return'] = df['avg_ret'] if 'avg_ret' in df.columns else np.random.uniform(-0.001, 0.002, len(df))
 
     if 'avg_volume' not in df.columns:
         df['avg_volume'] = np.random.uniform(1e6, 1e8, len(df))
