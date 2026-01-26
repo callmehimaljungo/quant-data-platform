@@ -26,13 +26,18 @@ def get_r2_client():
     
     # Try Streamlit secrets first, then env vars
     try:
-        endpoint = st.secrets.get("R2_ENDPOINT") or os.environ.get("R2_ENDPOINT")
-        access_key = st.secrets.get("R2_ACCESS_KEY") or os.environ.get("R2_ACCESS_KEY")
-        secret_key = st.secrets.get("R2_SECRET_KEY") or os.environ.get("R2_SECRET_KEY")
+        endpoint = st.secrets.get("R2_ENDPOINT") or st.secrets.get("R2_ENDPOINT_URL") or \
+                   os.environ.get("R2_ENDPOINT") or os.environ.get("R2_ENDPOINT_URL")
+                   
+        access_key = st.secrets.get("R2_ACCESS_KEY") or st.secrets.get("R2_ACCESS_KEY_ID") or \
+                     os.environ.get("R2_ACCESS_KEY") or os.environ.get("R2_ACCESS_KEY_ID")
+                     
+        secret_key = st.secrets.get("R2_SECRET_KEY") or st.secrets.get("R2_SECRET_ACCESS_KEY") or \
+                     os.environ.get("R2_SECRET_KEY") or os.environ.get("R2_SECRET_ACCESS_KEY")
     except Exception:
-        endpoint = os.environ.get("R2_ENDPOINT")
-        access_key = os.environ.get("R2_ACCESS_KEY")
-        secret_key = os.environ.get("R2_SECRET_KEY")
+        endpoint = os.environ.get("R2_ENDPOINT") or os.environ.get("R2_ENDPOINT_URL")
+        access_key = os.environ.get("R2_ACCESS_KEY") or os.environ.get("R2_ACCESS_KEY_ID")
+        secret_key = os.environ.get("R2_SECRET_KEY") or os.environ.get("R2_SECRET_ACCESS_KEY")
     
     if not all([endpoint, access_key, secret_key]):
         return None
@@ -52,9 +57,10 @@ def get_bucket_name():
     load_dotenv(Path(__file__).parent.parent.parent / '.env')
     
     try:
-        return st.secrets.get("R2_BUCKET") or os.environ.get("R2_BUCKET", "datn")
+        return st.secrets.get("R2_BUCKET") or st.secrets.get("R2_BUCKET_NAME") or \
+               os.environ.get("R2_BUCKET") or os.environ.get("R2_BUCKET_NAME", "datn")
     except Exception:
-        return os.environ.get("R2_BUCKET", "datn")
+        return os.environ.get("R2_BUCKET") or os.environ.get("R2_BUCKET_NAME", "datn")
 
 
 @st.cache_data(ttl=300)
